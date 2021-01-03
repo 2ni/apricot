@@ -1,24 +1,33 @@
+### DESCRIPTION
+This is a lorawan breakout board based on the attiny3217.
+
+Main features:
+- only 1 usb needed for programming and debug output on uart
+- uses an RFM95 for lorawan
+- onboard 1 led and sensors (light sensor ISL29035, temperature&humidity sensor SHT20, pressure sensor LPS22HBTR)
+- dual power input handling
+- esd protection
+- pinout supporting i2c, spi and general purpose pins
+- many [examples](/examples)
+
+
+### COMMANDS
+```
+./activate example/blink  // you 1st need so choose which project you'd like to use
+make flash                // compile, upload and starts the debugging usart
+make serial               // only starts the debugging usart
+make reset                // resets the mcu and starts the debugging usart
+```
+
 ### SETUP
-```
-git clone git@github.com:mraardvark/pyupdi.git
-```
+You'll need the toolchain from microchip to compile the sources.
 
-#### adapt physical.py
-the board controls the serial and updi with the dtr line.
-dtr=1 -> updi mode (dtr is 0v)
-dtr=0 -> uart debug mode (default, dtr is 3.3v)
+The shared usart for debugging and programming makes use of the DTR line to control which part is connected to the usb. For this matter a special [serial terminal](/serialterminal.py) and programmer is used. As programmer a patched [pyupdi](https://github.com/mraardvark/pyupdi) comes to hand.
+- DTR=1 -> updi mode (DTR outputs 0v)
+- DTR=0 -> uart debug mode (default, DTR outputs 3.3v)
 
-```
-- self.ser = serial.Serial(port, baud, parity=serial.PARITY_EVEN, timeout=1, stopbits=serial.STOPBITS_TWO)
-+ self.ser = serial.serial_for_url(port, baud, parity=serial.PARITY_EVEN, timeout=1, stopbits=serial.STOPBITS_TWO, rtscts=False, dsrdtr=False, do_not_open=True)
-+ self.ser.rts = 0  # needed so dtr reall gets 0v
-+ self.ser.dtr = 1
-+ self.ser.open()
-pip install -e pyupdi
-```
-
-### TOOLCHAIN
-- download the newest [toolchain](https://www.microchip.com/mplab/avr-support/avr-and-arm-toolchains-c-compilers) from microchip (you need to be logged in)
+#### MICROCHIP TOOLCHAIN
+- download the newest [toolchain](https://www.microchip.com/mplab/avr-support/avr-and-arm-toolchains-c-compilers) from microchip (you need an account and to be logged in)
 - download the newest [pack](http://packs.download.atmel.com/) from atmel (search for attiny3217 to get the correct pack)
 ```
 mkdir toolchain_microchip
@@ -28,3 +37,40 @@ unzip Atmel.ATtiny_DFP.1.8.332.atpack -d toolchain_microchip/pack/
 ```
 
 don't forget to include <avr/io.h> in your main code!
+
+#### PYUPDI
+```
+git clone git@github.com:mraardvark/pyupdi.git
+make patchpyupdi
+pip install -e pyupdi
+```
+
+This should result in the following change:
+```
+(apricot) denis@hirondelle:/Users/denis/www/apricot/foo $ git diff .
+diff --git a/updi/physical.py b/updi/physical.py
+index 96be64b..84115f9 100644
+--- a/updi/physical.py
++++ b/updi/physical.py
+@@ -31,7 +31,10 @@ class UpdiPhysical(object):
+             Standard COM port initialisation
+         """
+         self.logger.info("Opening {} at {} baud".format(port, baud))
+-        self.ser = serial.Serial(port, baud, parity=serial.PARITY_EVEN, timeout=1, stopbits=serial.STOPBITS_TWO)
++        self.ser = serial.serial_for_url(port, baud, parity=serial.PARITY_EVEN, timeout=1, stopbits=serial.STOPBITS_TWO, rtscts=False, dsrdtr=False, do_not_open=True)
++        self.ser.rts = 0  # needed so dtr reall gets 0v
++        self.ser.dtr = 1
++        self.ser.open()
+
+     def _loginfo(self, msg, data):
+         if data and isinstance(data[0], str):
+@@ -56,7 +59,10 @@ class UpdiPhysical(object):
+         # Which is slightly above the recommended 24.6ms
+         self.ser.close()
+
+-        temporary_serial = serial.Serial(self.port, 300, stopbits=serial.STOPBITS_ONE, timeout=1)
++        temporary_serial = serial.serial_for_url(self.port, 300, stopbits=serial.STOPBITS_ONE, timeout=1, rtscts=False, dsrdtr=False, do_not_open=True)
++        temporary_serial.rts = 0  # needed so dtr reall gets 0v
++        temporary_serial.dtr = 1
++        temporary_serial.open()
+```

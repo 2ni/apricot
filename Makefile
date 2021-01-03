@@ -138,3 +138,6 @@ disasm: $(PRJ).elf
 tests:
 	@echo "no tests yet"
 	# @$(MAKE) -C tests
+
+patchpyupdi:
+	sed -i '' 's/^\(\w*\)\(.*\) = serial.Serial(\([^\)]*\))/\1\2 = serial.serial_for_url(\3, rtscts=False, dsrdtr=False, do_not_open=True)\n\1\2.rts = 0  # needed so dtr reall gets 0v\n\1\2.dtr = 1\n\1\2.open()/' $(shell find foo -type f -name 'physical.py')
