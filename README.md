@@ -47,7 +47,8 @@ pip install -e pyupdi
 
 This should result in the following change:
 ```
-(apricot) denis@hirondelle:/Users/denis/www/apricot/foo $ git diff .
+$ cd pydupi
+$ git diff .
 diff --git a/updi/physical.py b/updi/physical.py
 index 96be64b..84115f9 100644
 --- a/updi/physical.py
