@@ -21,7 +21,7 @@ void uart_setup(void) {
   USART0.BAUD = (uint16_t)USART_BAUD_RATE(USART_BPS);
   USART0.CTRLB |= USART_TXEN_bm;  // enable TX for now
   USART_PORT.DIRSET = USART_TX;
-  _delay_ms(80); // TODO use sleep. Ensure receiving serial terminal is ready
+  _delay_ms(100); // TODO use sleep. Ensure receiving serial terminal is ready
 
   // see https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences for colors
   DF("\033[1;38;5;18;48;5;226m Hello from 0x%06lX \033[0m\n", get_deviceid());
