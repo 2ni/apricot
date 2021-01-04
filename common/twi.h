@@ -6,10 +6,10 @@
 #define TWI_BAUD(F_SCL)  ((((float)F_CPU / (float)F_SCL)) - 10 )
 #define TWI_MAXLEN        8
 
-void twi_init();
+void    twi_init();
 uint8_t twi_wait_ack();
 uint8_t twi_error(uint8_t status);
-void twi_stop();
+void    twi_stop();
 uint8_t twi_start(uint8_t addr);
 uint8_t twi_read(uint8_t *data, uint8_t ack);
 uint8_t twi_write(uint8_t data);

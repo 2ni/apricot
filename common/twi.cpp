@@ -99,6 +99,7 @@ uint8_t twi_write(uint8_t data) {
 uint8_t twi_write_bytes(uint8_t device_addr, uint8_t *data, uint8_t slave_reg, uint8_t num_bytes) {
     uint8_t status;
     if (num_bytes > TWI_MAXLEN) num_bytes = TWI_MAXLEN;
+
     status = twi_start(device_addr);
     if (status != 0) return status;
 
