@@ -1,10 +1,8 @@
 /*
- * library to send debug information to UART (bit banging version)
- * only tx -> rx connection is needed
- *
- * pin DBG is used for this purpose
- *
- * use make serial to run UART
+ * library to send debug information to UART
+ * alternate usart pin must be set (PORTMUX.CTRLB)
+ * TX=PA1
+ * RX=PA2
  *
  */
 
@@ -23,8 +21,7 @@ void uart_setup(void) {
   USART0.BAUD = (uint16_t)USART_BAUD_RATE(USART_BPS);
   USART0.CTRLB |= USART_TXEN_bm;  // enable TX for now
   USART_PORT.DIRSET = USART_TX;
-  PORTMUX.CTRLB = PORTMUX_USART0_ALTERNATE_gc; // alternate ports TX=PA1, RX=PA2
-  _delay_ms(70); // TODO use sleep. Ensure receiving serial terminal is ready
+  _delay_ms(80); // TODO use sleep. Ensure receiving serial terminal is ready
 
   // see https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences for colors
   DF("\033[1;38;5;18;48;5;226m Hello from 0x%06lX \033[0m\n", get_deviceid());
