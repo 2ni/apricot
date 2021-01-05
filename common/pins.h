@@ -11,6 +11,7 @@ typedef struct {
 } pins_t;
 
 extern pins_t PB0, PB1, PB4, PB5, PB6, PB7, pins_scl, pins_sda, pins_vin, pins_led;
+extern pins_t PC0, PC1, PC2, PC3, PC4, PC5, pins_sck, pins_miso, pins_mosi;
 
 void     pins_disable_buffer();
 void     pins_output(pins_t *pin, uint8_t value);

@@ -12,6 +12,16 @@ pins_t pins_sda = PB1;
 pins_t pins_vin = PB4;
 pins_t pins_led = PB5;
 
+pins_t PC0 = { .port = &PORTC, .pin = 0 };
+pins_t PC1 = { .port = &PORTC, .pin = 1 };
+pins_t PC2 = { .port = &PORTC, .pin = 2 };
+pins_t PC3 = { .port = &PORTC, .pin = 3 };
+pins_t PC4 = { .port = &PORTC, .pin = 4 };
+pins_t PC5 = { .port = &PORTC, .pin = 5 };
+pins_t pins_sck = PC0;
+pins_t pins_miso = PC1;
+pins_t pins_mosi = PC2;
+
 /*
  * disable digital input buffer on all pins
  * to save power

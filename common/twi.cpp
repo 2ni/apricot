@@ -1,7 +1,7 @@
 #include <util/delay.h>
 #include <avr/io.h>
 #include "twi.h"
-#include "uart.h"
+#include "pins.h"
 
 /*
  * default values:
@@ -9,10 +9,10 @@
  * SDA = PB1
  */
 void twi_init() {
-  PORTB.PIN0CTRL |= PORT_PULLUPEN_bm; // pullup
-  PORTB.PIN1CTRL |= PORT_PULLUPEN_bm;
-  PORTB.DIRSET = PIN0_bm;
-  PORTB.DIRSET = PIN1_bm;
+  pins_pullup(&pins_scl, 1);
+  pins_pullup(&pins_sda, 1);
+  pins_output(&pins_scl, 1);
+  pins_output(&pins_sda, 1);
 
   TWI0.MBAUD = (uint8_t)TWI_BAUD(400000);
   TWI0.MCTRLB = TWI_FLUSH_bm;
