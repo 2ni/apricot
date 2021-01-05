@@ -6,6 +6,7 @@ Main features:
 - uses an RFM95 for lorawan
 - onboard 1 led and sensors (light sensor ISL29035, temperature&humidity sensor SHT20, pressure sensor LPS22HBTR)
 - dual power input handling
+- 32.768kHz quartz for precise sleep times (TOSC1, TOSC2)
 - esd protection
 - pinout supporting i2c, spi and general purpose pins
 - many [examples](/examples)
@@ -50,10 +51,10 @@ This should result in the following change:
 $ cd pydupi
 $ git diff .
 diff --git a/updi/physical.py b/updi/physical.py
-index 96be64b..84115f9 100644
+index 96be64b..f1afb26 100644
 --- a/updi/physical.py
 +++ b/updi/physical.py
-@@ -31,7 +31,10 @@ class UpdiPhysical(object):
+@@ -31,7 +31,15 @@ class UpdiPhysical(object):
              Standard COM port initialisation
          """
          self.logger.info("Opening {} at {} baud".format(port, baud))
@@ -61,11 +62,16 @@ index 96be64b..84115f9 100644
 +        self.ser = serial.serial_for_url(port, baud, parity=serial.PARITY_EVEN, timeout=1, stopbits=serial.STOPBITS_TWO, rtscts=False, dsrdtr=False, do_not_open=True)
 +        self.ser.rts = 0  # needed so dtr reall gets 0v
 +        self.ser.dtr = 1
++
 +        self.ser.open()
++        # dtr is only set when port is opened, and stable low after ~3ms.
++        # during that time some crap from uart can come in, which disturbs the updi communication
++        time.sleep(.01)
++        self.ser.flushInput()
 
      def _loginfo(self, msg, data):
          if data and isinstance(data[0], str):
-@@ -56,7 +59,10 @@ class UpdiPhysical(object):
+@@ -56,7 +64,12 @@ class UpdiPhysical(object):
          # Which is slightly above the recommended 24.6ms
          self.ser.close()
 
@@ -74,4 +80,6 @@ index 96be64b..84115f9 100644
 +        temporary_serial.rts = 0  # needed so dtr reall gets 0v
 +        temporary_serial.dtr = 1
 +        temporary_serial.open()
++        time.sleep(.01)
++        self.ser.flushInput()
 ```
