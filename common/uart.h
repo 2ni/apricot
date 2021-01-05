@@ -21,7 +21,7 @@
 
 // DEBUG set in Makefile
 #ifdef DEBUG
-  #define DINIT()            uart_setup()
+  #define DINIT()            uart_init()
   #define DLF()              uart_send_string_p(PSTR("\n"))
   #define D(str)             uart_send_string_p(PSTR(str))
   #define DL(str)            { uart_send_string_p(PSTR(str)); DLF(); }
@@ -45,7 +45,7 @@
   #define DTUPLE(name, value)
 #endif
 
-void uart_setup(void);
+void uart_init();
 void uart_tuple(const char* key, const char* value);
 void uart_tuple(const char* key, uint16_t value, uint8_t base=10);
 void uart_tuple(const char* key, char* value);

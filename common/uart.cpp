@@ -17,7 +17,7 @@
 /*
  * setup uart and tx pin
  */
-void uart_setup(void) {
+void uart_init(void) {
   USART0.BAUD = (uint16_t)USART_BAUD_RATE(USART_BPS);
   USART0.CTRLB |= USART_TXEN_bm;  // enable TX for now
   USART_PORT.DIRSET = USART_TX;
@@ -78,8 +78,10 @@ void uart_tuple(const char* key, char* value) {
  * sends a single char to the uart
  */
 void uart_send_char(unsigned char c) {
+  USART0.STATUS = USART_TXCIF_bm; // clear flag
   while (!(USART0.STATUS & USART_DREIF_bm));
   USART0.TXDATAL = c;
+  while (!(USART0.STATUS & USART_TXCIF_bm)); // wait until data has been sent to avoid issues with eg sleep
 }
 
 /*
