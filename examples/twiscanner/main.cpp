@@ -2,13 +2,12 @@
 #include <avr/io.h>
 #include "uart.h"
 #include "twi.h"
+#include "mcu.h"
 
 
 int main(void) {
-  _PROTECTED_WRITE(CLKCTRL.MCLKCTRLB, CLKCTRL_PDIV_2X_gc | CLKCTRL_PEN_bm); // set prescaler to 2 -> 10MHz
-  PORTMUX.CTRLB = PORTMUX_USART0_ALTERNATE_gc || PORTMUX_SPI0_ALTERNATE_gc; // must be set at once, or the mcu might block
+  mcu_init();
 
-  DINIT();
   twi_init();
 
   uint8_t data[3] = {0};
