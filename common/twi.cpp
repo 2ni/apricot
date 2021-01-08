@@ -62,6 +62,10 @@ uint8_t twi_start(uint8_t device_addr) {
   return 0;
 }
 
+/*
+ * ack_flag = 0 -> send ACK
+ * ack_flag = 1 -> send NACK
+ */
 uint8_t twi_read(uint8_t *data, uint8_t ack_flag) {
   uint16_t timeout_cnt = 0;
   if ((TWI0.MSTATUS & TWI_BUSSTATE_gm) == TWI_BUSSTATE_OWNER_gc) {
@@ -100,7 +104,7 @@ uint8_t twi_write_bytes(uint8_t device_addr, uint8_t *data, uint8_t slave_reg, u
     uint8_t status;
     if (num_bytes > TWI_MAXLEN) num_bytes = TWI_MAXLEN;
 
-    status = twi_start(device_addr);
+    status = twi_start(device_addr); // wait for slave ACK
     if (status != 0) return status;
 
     status = twi_write(slave_reg);
@@ -122,7 +126,7 @@ uint8_t twi_read_bytes(uint8_t device_addr, uint8_t *data, uint8_t slave_reg, ui
   uint8_t status;
   if (num_bytes > TWI_MAXLEN) num_bytes = TWI_MAXLEN;
 
-  status = twi_start(device_addr);
+  status = twi_start(device_addr); // wait for slave ACK
   if (status != 0) return status;
 
   status = twi_write(slave_reg);
@@ -130,13 +134,13 @@ uint8_t twi_read_bytes(uint8_t device_addr, uint8_t *data, uint8_t slave_reg, ui
   // DF("status 4: %u\n", status);
   TWI0.MADDR = (device_addr<<1) + 1;
   while (num_bytes > 1) {
-    status = twi_read(data, 0);
+    status = twi_read(data, 0); // first bytes, send ACK
     // DF("status 5: %u\n", status);
     if (status != 0) return twi_error(status);
     data++;
     num_bytes--;
   }
-  status = twi_read(data, 1);
+  status = twi_read(data, 1); // single or last byte, send NACK
   // DF("status 6: %u\n", status);
   if (status != 0) return twi_error(status);
   twi_stop();

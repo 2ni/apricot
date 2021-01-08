@@ -1,5 +1,5 @@
 ### DESCRIPTION
-This is a lorawan breakout board based on the attiny3217.
+This is a lorawan breakout board based on the attiny3217. It's the successor of the [forgetmenot board](https://github.com/2ni/forgetmenot).
 
 Main features:
 - only 1 usb needed for programming and debug output on uart
