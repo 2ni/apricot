@@ -18,16 +18,16 @@ void TOUCH::set_thresholds(uint16_t ithreshold) {
   threshold = ithreshold;
   threshold_upper = ithreshold + 30;
   threshold_lower = ithreshold + 15;
-  DF("touch threshold: %u\n", threshold);
-  DF("touch threshold upper: %u\n", threshold_upper);
-  DF("touch threshold lower: %u\n", threshold_lower);
+  // DF("touch threshold: %u\n", threshold);
+  // DF("touch threshold upper: %u\n", threshold_upper);
+  // DF("touch threshold lower: %u\n", threshold_lower);
 }
 
 uint16_t TOUCH::get_avg() {
   uint16_t v, avg = 0;
   for(uint8_t i=0; i<10; i++) {
     v = get_data();
-    DF("v: %u\n", v);
+    // DF("v: %u\n", v);
     if (i>4) avg += v;
   }
   avg /= 5;
@@ -142,11 +142,8 @@ TOUCH::STATUS TOUCH::pressed(uint16_t timeout, pins_t *led) {
     finger_present = 1;
 
     // wait for release or timeout
-    uint16_t w = get_data();
-    while (!(w < threshold_lower) && !((millis_time()-now) > timeout)) {
-      w = get_data();
-      // DF("w: %u\n", w);
-    }
+    // TODO put MCU to sleep while waiting
+    while (!(get_data() < threshold_lower) && !((millis_time()-now) > timeout));
 
     return ((millis_time()-now)<timeout ? SHORT : LONG);
   }
