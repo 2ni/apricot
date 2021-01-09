@@ -22,7 +22,7 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
-void _s_sleep(uint16_t per, uint8_t prescaler);
+void _sleep(uint16_t per, uint8_t prescaler);
 void sleep_ms(uint16_t ms);
 void sleep_s(uint16_t s);
 

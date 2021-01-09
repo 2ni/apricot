@@ -40,7 +40,7 @@ ISR(RTC_CNT_vect) {
  * ...
  * 9 -> :512
  */
-void _s_sleep(uint16_t per, uint8_t prescaler) {
+void _sleep(uint16_t per, uint8_t prescaler) {
   while (RTC.STATUS > 0);             // wait for all register to be synchronized
 
   RTC.CLKSEL = RTC_CLKSEL_TOSC32K_gc;     // external 32.768kHz crystal
@@ -68,11 +68,11 @@ void _s_sleep(uint16_t per, uint8_t prescaler) {
  * (precision: 1000/1024 = 0.9765625 per bit)
  * max 2^16bit
  *
- * division is slow! if you need speed, use _s_sleep() and precalculate per value
+ * division is slow, avoid it! if you need speed, use _sleep() and precalculate per value
  *
  */
 void sleep_ms(uint16_t ms) {
-  _s_sleep((uint32_t)ms*33, 0); // 32768/1000 = 33 -> 1.007080078ms
+  _sleep((uint32_t)ms*33, 0); // 32768/1000 = 33 -> 1.007080078ms
 }
 
 /* prescaler 1024
@@ -81,5 +81,5 @@ void sleep_ms(uint16_t ms) {
  * max 2^16bit
  */
 void sleep_s(uint16_t seconds) {
-  _s_sleep(seconds, 0xf); // prescaler 2^15 = 32768
+  _sleep(seconds, 0xf); // prescaler 2^15 = 32768
 }
