@@ -28,7 +28,7 @@ SRC        = ./src
 EXT        =
 COMMON     = ./common
 
-FLAGS      = -DDEBUG
+FLAGS      = -DDEBUG -std=c++11 # avoid warning "non-static data member initializers"
 CPPFLAGS   =
 
 # toolchain_microchip
