@@ -1,26 +1,35 @@
 #include "pins.h"
 #include "sleep.h"
+pins_t PA1 = { .port = &PORTA, .pin = 1, .port_adc = &ADC1, .pin_adc = 7 };  // TXD (reserved for uart)
+pins_t PA2 = { .port = &PORTA, .pin = 2, .port_adc = &ADC1, .pin_adc = 8 };  // RXD (reserved for uart)
+pins_t PA3 = { .port = &PORTA, .pin = 3, .port_adc = &ADC1, .pin_adc = 9 };
+pins_t PA4 = { .port = &PORTA, .pin = 4, .port_adc = &ADC1, .pin_adc = 10 };
+pins_t PA5 = { .port = &PORTA, .pin = 5, .port_adc = &ADC1, .pin_adc = 11 };
+pins_t PA6 = { .port = &PORTA, .pin = 6, .port_adc = &ADC1, .pin_adc = 11 };
+pins_t PA7 = { .port = &PORTA, .pin = 7, .port_adc = &ADC1, .pin_adc = 11 };
 
-pins_t PB0 = { .port = &PORTB, .pin = 0 };
-pins_t PB1 = { .port = &PORTB, .pin = 1 };
-pins_t PB4 = { .port = &PORTB, .pin = 4, .port_adc = &ADC0, .pin_adc = 9 }; // ADC0/AIN9
-pins_t PB5 = { .port = &PORTB, .pin = 5 };
-pins_t PB6 = { .port = &PORTB, .pin = 6 };
-pins_t PB7 = { .port = &PORTB, .pin = 7 };
+pins_t PB0 = { .port = &PORTB, .pin = 0, .port_adc = &ADC0, .pin_adc = 11 }; // SCL
+pins_t PB1 = { .port = &PORTB, .pin = 1, .port_adc = &ADC0, .pin_adc = 10 }; // SDA
+pins_t PB4 = { .port = &PORTB, .pin = 4, .port_adc = &ADC0, .pin_adc = 9 };  // VIN
+pins_t PB5 = { .port = &PORTB, .pin = 5, .port_adc = &ADC0, .pin_adc = 8 };  // LED
+pins_t PB6 = { .port = &PORTB, .pin = 6, .port_adc = &ADC1, .pin_adc = 5 };
+pins_t PB7 = { .port = &PORTB, .pin = 7, .port_adc = &ADC1, .pin_adc = 4 };
 pins_t pins_scl = PB0;
 pins_t pins_sda = PB1;
 pins_t pins_vin = PB4;
 pins_t pins_led = PB5;
 
-pins_t PC0 = { .port = &PORTC, .pin = 0 };
-pins_t PC1 = { .port = &PORTC, .pin = 1 };
-pins_t PC2 = { .port = &PORTC, .pin = 2 };
-pins_t PC3 = { .port = &PORTC, .pin = 3 };
-pins_t PC4 = { .port = &PORTC, .pin = 4 };
-pins_t PC5 = { .port = &PORTC, .pin = 5 };
+pins_t PC0 = { .port = &PORTC, .pin = 0, .port_adc = &ADC1, .pin_adc = 6 };  // SCK
+pins_t PC1 = { .port = &PORTC, .pin = 1, .port_adc = &ADC1, .pin_adc = 7 };  // MISO
+pins_t PC2 = { .port = &PORTC, .pin = 2, .port_adc = &ADC1, .pin_adc = 8 };  // MOSI
+pins_t PC3 = { .port = &PORTC, .pin = 3, .port_adc = &ADC1, .pin_adc = 9 };  // CS_RFM
+pins_t PC4 = { .port = &PORTC, .pin = 4, .port_adc = &ADC1, .pin_adc = 10 }; // DIO0
+pins_t PC5 = { .port = &PORTC, .pin = 5, .port_adc = &ADC1, .pin_adc = 11 }; // DIO1
 pins_t pins_sck = PC0;
 pins_t pins_miso = PC1;
 pins_t pins_mosi = PC2;
+pins_t pins_csrfm = PC3;
+pins_t pins_dio0 = PC4;
 
 /*
  * disable digital input buffer on all pins
