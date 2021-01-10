@@ -30,7 +30,6 @@ class TOUCH {
     uint8_t finger_present = 0;
     uint32_t now = 0;
     // uint8_t press_notified = 0;
-    uint8_t status_finger = 0;
 };
 
 #endif
