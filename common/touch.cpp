@@ -106,11 +106,6 @@ uint16_t TOUCH::get_data() {
   return result;
 }
 
-uint8_t TOUCH::is_pressed() {
-  uint16_t v = get_data();
-  return v > threshold_upper;
-}
-
 uint8_t TOUCH::was_pressed() {
   uint16_t v = get_data();
 
@@ -125,28 +120,63 @@ uint8_t TOUCH::was_pressed() {
   return 0;
 }
 
-TOUCH::STATUS TOUCH::pressed(uint16_t timeout, pins_t *led) {
-  uint32_t now;
+/*
+ * returns statuses of pressed button
+ * if led given, it'll flash when the button is initially pressed
+ * TODO MCU can't sleep while pressed as it must measure time -> continue millis while sleeping
+ *
+ * MSB is set, if button is pressed
+ * lower bits are set depending if short, long, very long push
+ *
+ * example of returned values:
+ * 0x00  button not pushed
+ * 0x81  button initially pushed, 1 says we're currently in modus "short"
+ * 0x82  button still pushed, but 2 says we're currently in modus "long"
+ * 0x02  button was released as long push
+ * 0x00
+ *
+ * to check if button pressed:
+ *   if button.is_pressed() {
+ *     // do some stuff while button is pressed
+ *   }
+ * to check status while pressed:
+ *   s = button.is_pressed();
+ *   if (s & touch_is_pressed_bm) {
+ *     if (status & ~touch_is_pressed_bm == touch_short_bm) {
+ *       // do some stuff while button is pressed and detected as short push for now
+ *     }
+ *   }
+ * to check value of released button:
+ *   s = button.is_pressed();
+ *   if (status && (~status & touch_is_pressed_bm)) {
+ *     if (status == touch_long_bm) {
+ *       // do some stuff when button was released as long push
+ *     }
+ *   }
+ */
+uint8_t TOUCH::is_pressed(pins_t *led) {
   uint16_t v = get_data();
+  uint8_t s = 0;
+  uint8_t just_released = 0;
 
-  if (v < threshold_lower && finger_present) {
-    finger_present = 0;
-  }
-
-  // finger present
+  // button initially pushed (start)
   if (v > threshold_upper && !finger_present) {
-    now = millis_time();
-    if (led) {
-      pins_flash(led, 1);
-    }
     finger_present = 1;
-
-    // wait for release or timeout
-    // TODO put MCU to sleep while waiting
-    while (!(get_data() < threshold_lower) && !((millis_time()-now) > timeout));
-
-    return ((millis_time()-now)<timeout ? SHORT : LONG);
+    now = millis_time();
+    if (led) pins_flash(led, 1);
+  }
+  // button released
+  else if (finger_present && v < threshold_lower) {
+    finger_present = 0;
+    just_released = 1;
   }
 
-  return IDLE;
+  if (finger_present || just_released) {
+    uint32_t n = millis_time() - now;
+    if (n < 2000) s = touch_short_bm;
+    else if (n < 5000) s = touch_long_bm;
+    else s = touch_verylong_bm;
+  }
+
+  return (just_released ? 0x00 : (finger_present << 7)) | s;
 }
