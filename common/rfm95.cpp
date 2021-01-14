@@ -35,23 +35,22 @@
 #include "pins.h"
 #include "uart.h"
 
-RFM95::RFM95(pins_t *cs, pins_t *dio0, pins_t *dio1) {
-  pins_cs = cs;
-  pins_dio0 = dio0;
-  pins_dio1 = dio1;
+RFM95::RFM95(pins_t *ics, pins_t *idio0, pins_t *idio1) {
+  cs = ics;
+  dio0 = idio0;
+  dio1 = idio1;
 }
 
 uint8_t RFM95::init() {
   spi_init();
-  pins_output(&PC3, 1); // set as output
-  pins_set(&PC3, 1);    // set high (spi bus disabled by default)
+  pins_output(cs, 1); // set as output
+  pins_set(cs, 1);    // set high (spi bus disabled by default)
 
-  pins_output(&PC4, 0); // input, DIO0
-  pins_output(&PC5, 0); // input, DIO1
+  pins_output(dio0, 0); // input, DIO0
+  pins_output(dio1, 0); // input, DIO1
 
   // reset might be an issue
   uint8_t version = read_reg(0x42);
-  DF("version: 0x%02X\n", version);
   if (version != 0x11 && version != 0x12) { // some inofficial chips return ox12
     return 0; // failure
   }
@@ -109,14 +108,14 @@ uint8_t RFM95::init() {
  * enable spi transfer
  */
 void RFM95::select() {
-  pins_set(&PC3, 0);
+  pins_set(cs, 0);
 }
 
 /*
  * disable spi transfer
  */
 void RFM95::unselect() {
-  pins_set(&PC3, 1);
+  pins_set(cs, 1);
 }
 
 uint8_t RFM95::read_reg(uint8_t addr) {
@@ -185,9 +184,9 @@ Status RFM95::wait_for_single_package(uint8_t channel, uint8_t datarate) {
   write_reg(0x01, 0x86); // single rx
 
   // wait for rx done or timeout
-  while (pins_get(&PC4) == 0 && pins_get(&PC5) == 0) {}
+  while (pins_get(dio0) == 0 && pins_get(dio1) == 0) {}
 
-  if (pins_get(&PC5) == 1) {
+  if (pins_get(dio1) == 1) {
     write_reg(0x12, 0xE0); // clear interrupt
     // DL(NOK("timeout"));
     return TIMEOUT;
@@ -262,7 +261,7 @@ void RFM95::send(const Packet *packet, const uint8_t channel, const uint8_t data
 
   write_reg(0x01, 0x83); // switch rfm to tx
 
-  while(pins_get(&PC4) == 0) {} // wait for txdone
+  while(pins_get(dio0) == 0) {} // wait for txdone
 
   write_reg(0x12, 0x08); // clear interrupt
 

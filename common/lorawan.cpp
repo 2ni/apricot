@@ -31,9 +31,7 @@
  *
  */
 
-LORAWAN::LORAWAN(pins_t *cs, pins_t *dio0, pins_t *dio1) {
-  // cs, dio0, dio1
-  RFM95 rfm95(cs, dio0, dio1);
+LORAWAN::LORAWAN() {
 }
 
 void LORAWAN::set_otaa(uint8_t *deveui, uint8_t *appeui, uint8_t *appkey, const uint16_t counter) {
@@ -48,6 +46,21 @@ void LORAWAN::set_abp(uint8_t *devaddr, uint8_t *nwkskey, uint8_t *appskey, cons
   session.nwkskey = nwkskey;
   session.appskey = appskey;
   session.counter = counter;
+}
+
+/*
+ * to avoid tests blocking, this needs to be in a separate function
+ * which must be called in the real programm but not in the test suite
+ */
+void LORAWAN::init(pins_t *cs, pins_t *dio0, pins_t *dio1) {
+  RFM95 rfm95(cs, dio0, dio1);
+  uint8_t version = rfm95.init();
+  if (!version) {
+    DL(NOK("RFM95 init failed. Stopped."));
+    while (1);
+  } else {
+    DF("RFM95 version: 0x%02x\n", version);
+  }
 }
 
 /*
@@ -136,6 +149,7 @@ Status LORAWAN::join(uint8_t wholescan) {
       now = millis_time();
       if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK && decode_join_accept() == OK) {
         session.datarate = tx_datarate;
+        session.counter = 0;
         valid_lora = 1;
       }
       /*
@@ -175,6 +189,7 @@ Status LORAWAN::join(uint8_t wholescan) {
     sleep_ms(sleep_window_rx1+990-(millis_time()-now));
     if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK && decode_join_accept() == OK) {
       session.datarate = tx_datarate;
+      session.counter = 0;
       valid_lora = 1;
     }
     /*
@@ -223,6 +238,14 @@ Status LORAWAN::join(uint8_t wholescan) {
   return ERROR;
 }
 
+Status LORAWAN::send(const Packet *payload, Packet *rx_payload) {
+  return send(payload, 0, rx_payload);
+}
+
+/*
+ * datarate 7..12
+ * if not given -> take from session, which was set while join()
+ */
 Status LORAWAN::send(const Packet *payload, const uint8_t datarate, Packet *rx_payload) {
   uint8_t len = payload->len+13;
   uint8_t data[len];
@@ -231,13 +254,13 @@ Status LORAWAN::send(const Packet *payload, const uint8_t datarate, Packet *rx_p
   create_package(payload, &lora);
   uint8_t channel = (uint8_t)(rfm95.get_random(2)); // random channel 0-3
 
-  rfm95.send(&lora, channel, datarate);
+  rfm95.send(&lora, channel, datarate ? datarate : session.datarate);
   uint32_t now = millis_time();
   session.counter++;
-  DF("package sent ch%u SF%u\n", channel, datarate);
+  DF("package sent ch%u SF%u\n", channel, datarate ? datarate : session.datarate);
 
   uint8_t rx_channel = channel;
-  uint8_t rx_datarate = datarate;
+  uint8_t rx_datarate = datarate ? datarate : session.datarate;
 
   uint16_t sleep_window_rx1 = 990;
 
@@ -260,32 +283,37 @@ Status LORAWAN::send(const Packet *payload, const uint8_t datarate, Packet *rx_p
   }
   */
 
-  // rx1 window
-  // no rx1 window for SF12 as it would takte too much time for 1sec window (airtime 1.8sec)
-  if (datarate != 12) {
-    DF("(%lu) RX1: waiting for data ch%u SF%u\n", millis_time()-now, rx_channel, rx_datarate);
-    // while ((millis_time()-now) < 1010);
-    sleep_ms(sleep_window_rx1-(millis_time()-now));
-    now = millis_time();
+  // only check for incoming data if rx_payload given
+  if (rx_payload) {
+    // rx1 window
+    // no rx1 window for SF12 as it would takte too much time for 1sec window (airtime 1.8sec)
+    if (datarate != 12) {
+      DF("(%lu) RX1: waiting for data ch%u SF%u\n", millis_time()-now, rx_channel, rx_datarate);
+      // while ((millis_time()-now) < 1010);
+      sleep_ms(sleep_window_rx1-(millis_time()-now));
+      now = millis_time();
+      if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK && decode_data_down(rx_payload) == OK) {
+        DL(OK("received rx1"));
+        return OK;
+      }
+      sleep_window_rx1 = 0;
+    }
+
+    // rx2 window
+    rx_channel = 99;
+    rx_datarate = 9;
+    DF("(%lu) RX2: waiting for data ch%u SF%u\n", millis_time()-now, rx_channel, rx_datarate);
+    // while ((millis_time()-now) < 2020);
+    sleep_ms(sleep_window_rx1+990-(millis_time()-now));
     if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK && decode_data_down(rx_payload) == OK) {
-      DL(OK("received rx1"));
+      DL(OK("received rx2"));
       return OK;
     }
-    sleep_window_rx1 = 0;
-  }
 
-  // rx2 window
-  rx_channel = 99;
-  rx_datarate = 9;
-  DF("(%lu) RX2: waiting for data ch%u SF%u\n", millis_time()-now, rx_channel, rx_datarate);
-  // while ((millis_time()-now) < 2020);
-  sleep_ms(sleep_window_rx1+990-(millis_time()-now));
-  if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK && decode_data_down(rx_payload) == OK) {
-    DL(OK("received rx2"));
+    return NO_DATA;
+  } else {
     return OK;
   }
-
-  return NO_DATA;
 }
 
 Status LORAWAN::decode_data_down(Packet *payload) {

@@ -30,6 +30,7 @@ pins_t pins_miso = PC1;
 pins_t pins_mosi = PC2;
 pins_t pins_csrfm = PC3;
 pins_t pins_dio0 = PC4;
+pins_t pins_dio1 = PC5;
 
 /*
  * disable digital input buffer on all pins

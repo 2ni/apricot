@@ -8,12 +8,14 @@
 
 class LORAWAN {
   public:
-    LORAWAN(pins_t *cs = &PC3, pins_t *dio0 = &PC4, pins_t *dio1 = &PC5);
+    LORAWAN();
 
+    void     init(pins_t *cs = &pins_csrfm, pins_t *dio0 = &pins_dio0, pins_t *dio1 = &pins_dio1);
     void     set_otaa(uint8_t *deveui, uint8_t *appeui, uint8_t *appkey, const uint16_t counter = 0);
     void     set_abp(uint8_t *devaddr, uint8_t *nwkskey, uint8_t *appskey, const uint16_t counter = 0);
     Status   join(uint8_t wholescan=0);
-    Status   send(const Packet *payload, const uint8_t datarate, Packet *rx_payload);
+    Status   send(const Packet *payload, Packet *rx_payload);
+    Status   send(const Packet *payload, const uint8_t datarate = 0, Packet *rx_payload = 0);
     uint16_t calc_airtime(uint8_t len, uint8_t datarate);
 
     void     create_package(const Packet *payload, Packet *lora);

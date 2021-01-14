@@ -6,7 +6,7 @@
 
 class RFM95 {
   public:
-    RFM95(pins_t *cs = &PC3, pins_t *dio0 = &PC4, pins_t *dio1 = &PC5);
+    RFM95(pins_t *cs = &pins_csrfm, pins_t *dio0 = &pins_dio0, pins_t *dio1 = &pins_dio1);
 
     uint8_t  init();
     void     select();
@@ -29,7 +29,7 @@ class RFM95 {
     const uint32_t FREQUENCIES[8] = { 868100, 868300, 868500, 867100, 867300, 867500, 867700, 867900 };
     const uint32_t FREQUENCY_UP = 869525;
 
-    pins_t *pins_cs, *pins_dio0, *pins_dio1;
+    pins_t *cs, *dio0, *dio1;
 };
 
 #endif
