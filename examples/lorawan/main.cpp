@@ -6,16 +6,16 @@
 #include "mcu.h"
 #include "lorawan.h"
 #include "keys.h"
+#include "sleep.h"
 
 #define OTAA
 
 int main(void) {
   mcu_init();
+
   LORAWAN lora;
 
   lora.init();
-
-  while(1);
 
   uint8_t len = 3;
   uint8_t data[len] = { 0x61, 0x62, 0x63 };
@@ -31,7 +31,7 @@ int main(void) {
   extern uint8_t APPKEY[16];
   lora.set_otaa(DEVEUI, APPEUI, APPKEY);
 
-  if (lora.join(1)) { // scan all
+  if (lora.join() == OK) { // scan all
     uart_arr("appskey", lora.session.appskey, 16);
     uart_arr("nwkskey", lora.session.nwkskey, 16);
     uart_arr("devaddr", lora.session.devaddr, 4);
