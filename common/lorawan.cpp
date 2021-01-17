@@ -101,7 +101,7 @@ void LORAWAN::init(pins_t *cs, pins_t *dio0, pins_t *dio1) {
  *
  * TODO set attiny to sleep and wake up on pin interrupt rfm_interrupt or time_out
  *
- * TODO save received cflist, uplink datarate, offset and delay
+ * TODO save received cflist, offset and delay
  * TODO handle sending power (rssi)
  *
  */
@@ -115,8 +115,14 @@ Status LORAWAN::join(uint8_t wholescan) {
   uint8_t valid_lora;
   uint8_t trials = 0;
   uint32_t now;
-  uint16_t airtime;
+  uint16_t airtime = 0;
   uint16_t num_trials = 7;
+
+  // we depend on timings so we init it, if not yet done
+  if (!millis_is_init()) {
+    millis_init();
+  }
+
   // we try multiple times to get a join accept package (trying to fullfill retransmission on p.65 of 1.0.3 specification)
   while (trials < num_trials) {
     valid_lora = 0;
@@ -253,6 +259,11 @@ Status LORAWAN::send(const Packet *payload, const uint8_t datarate, Packet *rx_p
   Packet lora = { .data=data, .len=len };
   create_package(payload, &lora);
   uint8_t channel = (uint8_t)(rfm95.get_random(2)); // random channel 0-3
+
+  // we depend on timings so we init it, if not yet done
+  if (!millis_is_init()) {
+    millis_init();
+  }
 
   rfm95.send(&lora, channel, datarate ? datarate : session.datarate);
   uint32_t now = millis_time();

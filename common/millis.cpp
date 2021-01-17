@@ -30,6 +30,13 @@ void millis_init() {
   millis_init(F_CPU);
 }
 
+/*
+ * check if millis was already initialized, eg on lorawan
+ */
+uint8_t millis_is_init() {
+  return TCB0.CTRLA & (1<<TCB_ENABLE_bp);
+}
+
 uint32_t millis_time() {
   cli();
   uint32_t r = millis;

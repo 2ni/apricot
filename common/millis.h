@@ -3,6 +3,7 @@
 
 void millis_init();
 void millis_init(uint32_t cpu);
+uint8_t millis_is_init();
 uint32_t millis_time();
 
 #endif
