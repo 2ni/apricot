@@ -18,9 +18,11 @@ void TOUCH::set_thresholds(uint16_t ithreshold) {
   threshold = ithreshold;
   threshold_upper = ithreshold + 30;
   threshold_lower = ithreshold + 15;
-  // DF("touch threshold: %u\n", threshold);
-  // DF("touch threshold upper: %u\n", threshold_upper);
-  // DF("touch threshold lower: %u\n", threshold_lower);
+  /*
+  DF("touch threshold: %u\n", threshold);
+  DF("touch threshold upper: %u\n", threshold_upper);
+  DF("touch threshold lower: %u\n", threshold_lower);
+  */
 }
 
 uint16_t TOUCH::get_avg() {
