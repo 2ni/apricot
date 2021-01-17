@@ -14,15 +14,14 @@
 
 class TOUCH {
   public:
-    TOUCH(pins_t *pin);
-    TOUCH(pins_t *pin, uint16_t threshold);
+    TOUCH(pins_t *pin, uint16_t threshold_low = 15, uint16_t threshold_high = 30, uint16_t threshold = 0);
     uint16_t get_data();
     uint8_t was_pressed();
     uint16_t get_avg();
     uint8_t is_pressed(pins_t *led = 0);
 
   private:
-    void set_thresholds(uint16_t threshold);
+    void set_thresholds(uint16_t threshold_low, uint16_t threshold_high, uint16_t threshold = 0);
     pins_t *pin;
     uint16_t threshold = 0;
     uint16_t threshold_upper = 0;

@@ -4,25 +4,18 @@
 #include "uart.h"
 #include "millis.h"
 
-TOUCH::TOUCH(pins_t *ipin) {
+TOUCH::TOUCH(pins_t *ipin, uint16_t threshold_low, uint16_t threshold_high, uint16_t threshold) {
   pin = ipin;
-  set_thresholds(get_avg());
+  set_thresholds(threshold_low, threshold_high, threshold ? threshold : get_avg());
 }
 
-TOUCH::TOUCH(pins_t *ipin, uint16_t threshold) {
-  pin = ipin;
-  set_thresholds(threshold);
-}
-
-void TOUCH::set_thresholds(uint16_t ithreshold) {
+void TOUCH::set_thresholds(uint16_t threshold_low, uint16_t threshold_high, uint16_t ithreshold) {
   threshold = ithreshold;
-  threshold_upper = ithreshold + 30;
-  threshold_lower = ithreshold + 15;
-  /*
+  threshold_upper = ithreshold + threshold_high;
+  threshold_lower = ithreshold + threshold_low;
   DF("touch threshold: %u\n", threshold);
   DF("touch threshold upper: %u\n", threshold_upper);
   DF("touch threshold lower: %u\n", threshold_lower);
-  */
 }
 
 uint16_t TOUCH::get_avg() {
@@ -160,6 +153,11 @@ uint8_t TOUCH::is_pressed(pins_t *led) {
   uint16_t v = get_data();
   uint8_t s = 0;
   uint8_t just_released = 0;
+
+  // we depend on millis
+  if (!millis_is_init()) {
+    millis_init();
+  }
 
   // button initially pushed (start)
   if (v > threshold_upper && !finger_present) {

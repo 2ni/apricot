@@ -13,9 +13,10 @@
 
 int main(void) {
   mcu_init();
-  millis_init(); // needed for TOUCH.is_pressed()
 
   TOUCH button(&PB7);
+  // TOUCH button(&PA3, 50, 100); // alu strip to check if someone is sitting on a chair
+
   uint8_t is_pressed;
 
   while (1) {
