@@ -21,12 +21,16 @@ void twi_init() {
   TWI0.MSTATUS |= (TWI_RIF_bm | TWI_WIF_bm | TWI_BUSERR_bm);
 }
 
+/*
+ * wait for read/write interrupt and return status
+ * rxack = 0 -> ACK from slave
+ * rxack = 1 -> NACK from slave
+ */
 uint8_t twi_wait_ack(void) {
   uint8_t timeout_cnt = 0;
-  while (!(TWI0.MSTATUS & TWI_RIF_bm) && !(TWI0.MSTATUS & TWI_WIF_bm)) {
+  while (!(TWI0.MSTATUS & (TWI_WIF_bm | TWI_RIF_bm))) { // wait for read or write interrupt
     if (timeout_cnt++ == 255) return 0xff;
   }
-  TWI0.MSTATUS |= (TWI_RIF_bm | TWI_WIF_bm);
   if (TWI0.MSTATUS & TWI_BUSERR_bm) return 4;
   if (TWI0.MSTATUS & TWI_ARBLOST_bm) return 2;
   if (TWI0.MSTATUS & TWI_RXACK_bm) return 1;
@@ -43,15 +47,14 @@ void twi_stop() {
   TWI0.MCTRLB |= TWI_MCMD_STOP_gc;
 }
 
-
 /*
  * device_addr = 7bit address of i2c sensor
  */
-uint8_t twi_start(uint8_t device_addr) {
+uint8_t twi_start(uint8_t device_addr, uint8_t read) {
   uint8_t status;
   TWI0.MSTATUS |= (TWI_RIF_bm | TWI_WIF_bm);
   if (TWI0.MSTATUS & TWI_BUSERR_bm) return twi_error(4);
-  TWI0.MADDR = device_addr<<1;
+  TWI0.MADDR = device_addr<<1 | (1 && read);
 
   status = twi_wait_ack();
   if (status != 0) {
@@ -67,7 +70,7 @@ uint8_t twi_start(uint8_t device_addr) {
  * ack_flag = 1 -> send NACK
  */
 uint8_t twi_read(uint8_t *data, uint8_t ack_flag) {
-  uint16_t timeout_cnt = 0;
+  uint16_t timeout_cnt = -1;
   if ((TWI0.MSTATUS & TWI_BUSSTATE_gm) == TWI_BUSSTATE_OWNER_gc) {
     while (!(TWI0.MSTATUS & TWI_RIF_bm)) {
       if (++timeout_cnt == 65535) return 0xff;
@@ -104,7 +107,7 @@ uint8_t twi_write_bytes(uint8_t device_addr, uint8_t *data, uint8_t slave_reg, u
     uint8_t status;
     if (num_bytes > TWI_MAXLEN) num_bytes = TWI_MAXLEN;
 
-    status = twi_start(device_addr); // wait for slave ACK
+    status = twi_start(device_addr, 0); // wait for slave ACK
     if (status != 0) return status;
 
     status = twi_write(slave_reg);
@@ -121,18 +124,27 @@ uint8_t twi_write_bytes(uint8_t device_addr, uint8_t *data, uint8_t slave_reg, u
 
 /*
  * device_addr = 7bit address of i2c sensor
+ * wait_for_ack: waits for ack from slave
  */
-uint8_t twi_read_bytes(uint8_t device_addr, uint8_t *data, uint8_t slave_reg, uint8_t num_bytes) {
+uint8_t twi_read_bytes(uint8_t device_addr, uint8_t *data, uint8_t slave_reg, uint8_t num_bytes, uint8_t wait_for_ack) {
   uint8_t status;
   if (num_bytes > TWI_MAXLEN) num_bytes = TWI_MAXLEN;
 
-  status = twi_start(device_addr); // wait for slave ACK
+  status = twi_start(device_addr, 0); // wait for write ACK
   if (status != 0) return status;
 
   status = twi_write(slave_reg);
   if (status != 0) return twi_error(status);
   // DF("status 4: %u\n", status);
-  TWI0.MADDR = (device_addr<<1) + 1;
+
+  twi_stop();
+
+  if (wait_for_ack) {
+    while ((status = twi_start(device_addr, 1)) != 0);
+  } else {
+    status = twi_start(device_addr, 1); // wait for read ack
+  }
+
   while (num_bytes > 1) {
     status = twi_read(data, 0); // first bytes, send ACK
     // DF("status 5: %u\n", status);
