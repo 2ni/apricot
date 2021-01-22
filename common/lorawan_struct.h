@@ -16,17 +16,17 @@ typedef enum {
 } Status;
 
 typedef struct {
-  uint8_t *nwkskey;
-  uint8_t *appskey;
-  uint8_t *devaddr;
+  uint8_t nwkskey[16];
+  uint8_t appskey[16];
+  uint8_t devaddr[4];
   uint16_t counter;
   uint8_t datarate;
 } Lora_session;
 
 typedef struct {
-  uint8_t *deveui;
-  uint8_t *appeui;
-  uint8_t *appkey;
+  uint8_t deveui[8];
+  uint8_t appeui[8];
+  uint8_t appkey[16];
   uint16_t devnonce;
 } Lora_otaa;
 

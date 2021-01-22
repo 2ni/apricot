@@ -35,16 +35,16 @@ LORAWAN::LORAWAN() {
 }
 
 void LORAWAN::set_otaa(uint8_t *deveui, uint8_t *appeui, uint8_t *appkey, const uint16_t counter) {
-  otaa.deveui = deveui;
-  otaa.appeui = appeui;
-  otaa.appkey = appkey;
+  aes128_copy_array(otaa.deveui, deveui, 8);
+  aes128_copy_array(otaa.appeui, appeui, 8);
+  aes128_copy_array(otaa.appkey, appkey, 16);
   session.counter = counter;
 }
 
 void LORAWAN::set_abp(uint8_t *devaddr, uint8_t *nwkskey, uint8_t *appskey, const uint16_t counter) {
-  session.devaddr = devaddr;
-  session.nwkskey = nwkskey;
-  session.appskey = appskey;
+  aes128_copy_array(session.devaddr, devaddr, 4);
+  aes128_copy_array(session.nwkskey, nwkskey, 16);
+  aes128_copy_array(session.appskey, appskey, 16);
   session.counter = counter;
 }
 

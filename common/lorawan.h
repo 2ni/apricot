@@ -21,18 +21,10 @@ class LORAWAN {
     void     create_package(const Packet *payload, Packet *lora);
     void     cipher(Packet *payload, const uint16_t counter, const uint8_t direction, const uint8_t fport = 1, const uint8_t *devaddr = 0);
 
-    uint16_t counter = 0;
-    uint8_t appskey[16] = {0};
-    uint8_t nwkskey[16] = {0};
-    uint8_t devaddr[4] = {0};
-    Lora_session session = { .nwkskey=nwkskey, .appskey=appskey, .devaddr=devaddr, .counter=counter };
+    Lora_session session = { .nwkskey={0}, .appskey={0}, .devaddr={0}, .counter=0, .datarate=0 };
 
   private:
-    uint8_t deveui[8] = {0};
-    uint8_t appeui[8] = {0};
-    uint8_t appkey[16] = {0};
-    uint16_t devnonce = 0;
-    Lora_otaa otaa = { .deveui=deveui, .appeui=appeui, .appkey=appkey, .devnonce=devnonce };
+    Lora_otaa otaa = { .deveui={0}, .appeui={0}, .appkey={0}, .devnonce=0 };
     RFM95 rfm95;
 
     void     send_join_request(uint8_t channel, uint8_t datarate);
