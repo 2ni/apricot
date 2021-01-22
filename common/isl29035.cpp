@@ -63,6 +63,10 @@ uint8_t ISL29035::read_data(uint16_t *data) {
 }
 
 /*
+ * see https://en.wikipedia.org/wiki/Daylight:
+ * 20000: shade illuminated by entire blue sky, midday
+ * 1000-2000: overcast, midday
+ *
  * range:
  * 0: 1000  lux
  * 1: 4000  lux
