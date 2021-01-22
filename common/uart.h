@@ -42,7 +42,10 @@
   #define DLF()
   #define DL(str)
   #define DF(size, format, ...)
-  #define DTUPLE(name, value)
+  #define DT_C(key, value)
+  #define DT_S(key, value)
+  #define DT_I(key, value)
+  #define DT_IH(key, value)
 #endif
 
 void uart_init();
