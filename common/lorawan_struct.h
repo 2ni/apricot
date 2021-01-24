@@ -10,7 +10,7 @@ typedef struct {
 
 typedef enum {
   OK,            // return 0 -> all good
-  NO_DATA,
+  NO_ACK,
   TIMEOUT,
   ERROR
 } Status;

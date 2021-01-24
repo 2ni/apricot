@@ -56,11 +56,16 @@ int main(void) {
     DF("datarate: %u\n", lora.session.datarate);
     DF("counter: %u\n", lora.session.counter);
     Status status = lora.send(&payload, &rx_packet);
-    DF("counter after: %u\n", lora.session.counter);
     eeprom_update_word(&ee_session.counter, lora.session.counter);
     if (status == OK) {
+      DL(OK("all good"));
+    } else if (status == NO_ACK) {
+      DL(NOK("ack failed"));
+    }
+
+    if (rx_packet.len) {
       uart_arr("received message", rx_packet.data, rx_packet.len);
-    } else if (status == NO_DATA) {
+    } else {
       DL("no data received");
     }
   }
@@ -73,11 +78,11 @@ int main(void) {
     have_session = 1;
     eeprom_update_byte(&ee_have_session, have_session);
   }
-  Status status = lora.send(&payload, 7, &rx_packet); // datarate is not set in abp mode
+  Status status = lora.send(&payload, &rx_packet, 7, 0); // datarate is not set in abp mode
   eeprom_update_word(&ee_session.counter, lora.session.counter);
-  if (status == OK) {
+  if (rx_packet.len) {
     uart_arr("received message", rx_packet.data, rx_packet.len);
-  } else if (status == NO_DATA) {
+  } else {
     DL("no data received");
   }
 #endif

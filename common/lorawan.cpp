@@ -31,7 +31,15 @@
  *
  */
 
+/*
+ * check the link every 2^check_link_nth package sent
+ */
 LORAWAN::LORAWAN() {
+  check_link_nth = 0;
+}
+
+LORAWAN::LORAWAN(uint8_t i_check_link_nth) {
+  check_link_nth = i_check_link_nth;
 }
 
 void LORAWAN::set_otaa(uint8_t *deveui, uint8_t *appeui, uint8_t *appkey, const uint16_t counter) {
@@ -244,20 +252,28 @@ Status LORAWAN::join(uint8_t wholescan) {
   return ERROR;
 }
 
-Status LORAWAN::send(const Packet *payload, Packet *rx_payload) {
-  return send(payload, 0, rx_payload);
+Status LORAWAN::send(const Packet *payload, Packet *rx_payload, uint8_t ack) {
+  return send(payload, rx_payload, 0, ack);
 }
 
 /*
  * datarate 7..12
- * if not given -> take from session, which was set while join()
+ * datarate 0: use automatic datarate set by gw or join (from session)
  */
-Status LORAWAN::send(const Packet *payload, const uint8_t datarate, Packet *rx_payload) {
+Status LORAWAN::send(const Packet *payload, Packet *rx_payload, const uint8_t datarate, uint8_t ack) {
   uint8_t len = payload->len+13;
+  uint8_t tx_cmds[1] = {0};
+  // simple modulo, sending LinkCheckReq every 2^check_link_nth
+  uint8_t do_check = check_link_nth && session.counter && ((session.counter>>check_link_nth)*(1<<check_link_nth) == session.counter);
+  if (do_check) {
+    len += 1;
+    tx_cmds[0] = LORA_MAC_LINKCHECK;
+  }
   uint8_t data[len];
   memset(data, 0, len);
   Packet lora = { .data=data, .len=len };
-  create_package(payload, &lora);
+  create_package(payload, &lora, ack, tx_cmds);
+
   uint8_t channel = (uint8_t)(rfm95.get_random(2)); // random channel 0-3
 
   // we depend on timings so we init it, if not yet done
@@ -290,12 +306,19 @@ Status LORAWAN::send(const Packet *payload, const uint8_t datarate, Packet *rx_p
     return OK;
   } else {
     DF(NOK("(%lu) RX timeout") "\n", millis_time()-now);
-    return NO_DATA;
+    return ERROR;
   }
   */
 
+  const uint8_t rx_cmds_len = 15;
+  uint8_t rx_cmds_data[rx_cmds_len] = {0};
+  Packet rx_cmds = { .data = rx_cmds_data, .len=rx_cmds_len };
+  Status status_received;
+
   // only check for incoming data if rx_payload given
   if (rx_payload) {
+    rx_payload->len = 0; // by default we get no data
+    rx_cmds.len = 0; // by default no data
     // rx1 window
     // no rx1 window for SF12 as it would takte too much time for 1sec window (airtime 1.8sec)
     if (datarate != 12) {
@@ -303,9 +326,14 @@ Status LORAWAN::send(const Packet *payload, const uint8_t datarate, Packet *rx_p
       // while ((millis_time()-now) < 1010);
       sleep_ms(sleep_window_rx1-(millis_time()-now));
       now = millis_time();
-      if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK && decode_data_down(rx_payload) == OK) {
+      if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK) {
         DL(OK("received rx1"));
-        return OK;
+        // TODO if do_check and no LORA_MAC_LINKCHECK received -> rejoin
+        status_received = decode_data_down(rx_payload, &rx_cmds, ack);
+        if (rx_cmds.len) {
+          uart_arr("rx cmds", rx_cmds.data, rx_cmds.len);
+        }
+        return status_received;
       }
       sleep_window_rx1 = 0;
     }
@@ -316,18 +344,22 @@ Status LORAWAN::send(const Packet *payload, const uint8_t datarate, Packet *rx_p
     DF("(%lu) RX2: waiting for data ch%u SF%u\n", millis_time()-now, rx_channel, rx_datarate);
     // while ((millis_time()-now) < 2020);
     sleep_ms(sleep_window_rx1+990-(millis_time()-now));
-    if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK && decode_data_down(rx_payload) == OK) {
+    if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK) {
       DL(OK("received rx2"));
-      return OK;
+      status_received = decode_data_down(rx_payload, &rx_cmds, ack);
+      if (rx_cmds.len) {
+        uart_arr("rx cmds", rx_cmds.data, rx_cmds.len);
+      }
+      return status_received;
     }
 
-    return NO_DATA;
+    return OK;
   } else {
     return OK;
   }
 }
 
-Status LORAWAN::decode_data_down(Packet *payload) {
+Status LORAWAN::decode_data_down(Packet *payload, Packet *rx_cmds, uint8_t ack_requested) {
   uint8_t datap[64] = {0};
   Packet phy = { .data=datap, .len=64 }; // PhyPayload MHDR(1) MAC Payload|Join Accept MIC(4)
   Status status = rfm95.read(&phy);
@@ -343,7 +375,7 @@ Status LORAWAN::decode_data_down(Packet *payload) {
   uint8_t mhdr = phy.data[0];
   if (mhdr != 0x60 && mhdr != 0xa0) {
     DF(NOK("unsupported type:") "%02x\n", mhdr);
-    return NO_DATA;
+    return ERROR;
   }
 
   // check devaddr
@@ -358,7 +390,7 @@ Status LORAWAN::decode_data_down(Packet *payload) {
   }
   // uart_arr("data for", devaddr_received, 4);
   if (!is_same(session.devaddr, devaddr, 4)) {
-    return NO_DATA;
+    return ERROR;
   }
 
   // uart_arr("you've got mail", phy.data, phy.len);
@@ -377,7 +409,7 @@ Status LORAWAN::decode_data_down(Packet *payload) {
   aes128_mic(session.nwkskey, &b0, &mic);
   if (!is_same(mic.data, &phy.data[phy.len], 4)) {
     DL(NOK("MIC fail!"));
-    return NO_DATA;
+    return ERROR;
   }
 
   // get frmpayload
@@ -386,17 +418,25 @@ Status LORAWAN::decode_data_down(Packet *payload) {
   // fctrl = phy.data[5] -> foptslen phy.data[5] bits 3..0
   // counter = phy.data[6..7]
 
-  uint8_t frame_options_len = (phy.data[5] & 0x0F); // FCtrl[3..0]
-  uint8_t ack = (phy.data[5] & 0x20);               //  FCtrl[5]
-  DF("ack: %u\n", ack);
-  DF("fctrl: 0x%02x\n", phy.data[5]);
+  uint8_t fctrl = phy.data[5];
+  // DF("fctrl: 0x%02x\n", fctrl);
+  uint8_t frame_options_len = (fctrl & 0x07); // FCtrl[3..0] if set, we have some options (=mac cmds)
+  uint8_t ack_received = (fctrl & 0x20);      // FCtrl[5] if ack was requested while sending, this ack should be set in the response
+  uint8_t adr = (fctrl & 0x80);               // FCtrl[7]
+  // DF("foptslen: %u\n", frame_options_len);
+  DF("ack received: %u\n", ack_received);
+  DF("adr: %u\n", adr);
+  // we got mac commands
   if (frame_options_len) {
-    DF("fopts: 0x%02x\n", frame_options_len);
-    uart_arr("options", &phy.data[8], frame_options_len);
+    rx_cmds->len = frame_options_len;
+    for (uint8_t i=0; i<frame_options_len; i++) {
+      rx_cmds->data[i] = phy.data[8+i];
+    }
   }
   uint8_t fport = phy.data[8+frame_options_len];
   uint8_t pdata = 9 + frame_options_len;            // MHDR(1) + FHDR(7+FOptsLen) + FPort(1)
 
+  // downlink data
   if (pdata < phy.len) {
     payload->len = phy.len - pdata;
     for (uint8_t i=0; i<payload->len; i++) {
@@ -404,10 +444,10 @@ Status LORAWAN::decode_data_down(Packet *payload) {
     }
     // decrypt payload_encrypted by encrypting it (=FRMPayload)
     cipher(payload, counter, direction, fport, devaddr);
-    return OK;
+    return (ack_requested && ack_received) || !ack_requested ? OK : NO_ACK;
+  // mac commands available
   } else {
-    DL(NOK("no data"));
-    return NO_DATA;
+    return (ack_requested && ack_received) || !ack_requested ? OK : NO_ACK;
   }
 }
 
@@ -427,7 +467,7 @@ Status LORAWAN::decode_join_accept() {
   uint8_t mhdr = phy.data[0];
   if (mhdr != 0x20) {
     DF(NOK("unsupported type:") "%02x\n", mhdr);
-    return NO_DATA;
+    return ERROR;
   }
 
   // decrypt
@@ -448,7 +488,7 @@ Status LORAWAN::decode_join_accept() {
   aes128_mic(otaa.appkey, &phy, &mic);
   if (!is_same(mic.data, &phy.data[phy.len], 4)) {
     DL(NOK("MIC fail!"));
-    return NO_DATA;
+    return ERROR;
   }
 
   // appnonce   = phy.data[1..3]
@@ -554,9 +594,9 @@ void LORAWAN::cipher(Packet *payload, const uint16_t counter, const uint8_t dire
 }
 
 /*
- * lorawan packet: header+port(9) + FRMpayload() + mic(3)
+ * lorawan packet: header+port(9) + FOpts(0..15) + FRMpayload() + mic(4)
  * payload: len
- * lora: len+13
+ * lora: len+13+15 (fopts worst case)
  * (with B0: len+9+16)
  *
  * package:     40 11 34 01 26 00 05 00 01 6f c9 03
@@ -566,16 +606,27 @@ void LORAWAN::cipher(Packet *payload, const uint16_t counter, const uint8_t dire
  *
  * cipher: 61 62 63 -> 6f c9 03
  *
+ * TODO mac cmds as data frame with fport=0 (encrypted)
+ * TODO send / receive ack
  */
-void LORAWAN::create_package(const Packet *payload, Packet *lora) {
+void LORAWAN::create_package(const Packet *payload, Packet *lora, uint8_t ack, uint8_t *cmds) {
+  uint8_t cmds_count = lora->len - payload->len - 13;
+  if (cmds_count > 15) cmds_count = 15;
+  // DF("cmds_count: %u\n", cmds_count);
+  if (cmds_count) uart_arr("tx mac", cmds, cmds_count);
   uint8_t direction = 0;
+
   // header
-  lora->data[0] = 0x40;                                                  // mac header, mtype=010: unconfirmed data uplink (unconfirmed: 0x40, confirmed: 0x80)
-  for (uint8_t i=0; i<4; i++) lora->data[1+i] = session.devaddr[3-i];   // device address
-  lora->data[5] = 0x00;                                                  // frame control (TODO respond ack requests: 0x20)
-  lora->data[6] = (session.counter & 0x00ff);                           // frame tx counter lsb
-  lora->data[7] = ((session.counter >> 8) & 0x00ff);                    // frame tx counter msb
-  lora->data[8] = 0x01;                                                  // frame port hardcoded for now. port>1 use AppSKey else NwkSkey
+  lora->data[0] = (0x40<<(ack & 0x01));                                 // mhdr(1), mtype=010: unconfirmed data uplink (unconfirmed: 0x40, confirmed: 0x80)
+  for (uint8_t i=0; i<4; i++) lora->data[1+i] = session.devaddr[3-i];   // devaddr(4)
+  lora->data[5] = 0x00 | cmds_count;                                    // fctrl(1) TODO support adr, respond ack requests: 0x20
+  lora->data[6] = (session.counter & 0x00ff);                           // fcnt(1) tx counter lsb
+  lora->data[7] = ((session.counter >> 8) & 0x00ff);                    // fcnt(1) tx counter msb
+  for (uint8_t i=0; i<cmds_count; i++) {                                // fopts(0..15) mac commands
+    lora->data[8+i] = cmds[i];
+  }
+  lora->data[8+cmds_count] = 0x01;                                      // fport(0..1) hardcoded for now. port>1 use AppSKey else NwkSkey
+                                                                        // frmpayload(N)
 
   // encrypt payload (=FRMPayload)
   uint8_t data[payload->len];
@@ -585,14 +636,14 @@ void LORAWAN::create_package(const Packet *payload, Packet *lora) {
   for (uint8_t i=0; i<payload_encrypted.len; i++) {
     payload_encrypted.data[i] = payload->data[i];
   }
-  cipher(&payload_encrypted, session.counter, direction);
+  cipher(&payload_encrypted, session.counter, direction, lora->data[8+cmds_count]);
   for (uint8_t i=0; i<payload_encrypted.len; i++) {
-    lora->data[9+i] = payload_encrypted.data[i];
+    lora->data[9+cmds_count+i] = payload_encrypted.data[i];
   }
   lora->len -= 4; // ignore mic for now
 
   // calculate mic of package consisting of header + data
-  uint8_t lenb0 = payload->len+9+16;
+  uint8_t lenb0 = payload->len+9+cmds_count+16;
   uint8_t datab0[lenb0];
   memset(datab0, 0, lenb0);
   Packet b0 = { .data=datab0, .len=lenb0 };
@@ -606,6 +657,7 @@ void LORAWAN::create_package(const Packet *payload, Packet *lora) {
   for (uint8_t i=0; i<4; i++) {
     lora->data[lora->len-4+i] = mic.data[i];
   }
+  uart_arr("lora", lora->data, lora->len);
 }
 
 uint8_t LORAWAN::is_same(uint8_t *arr1, uint8_t *arr2, uint8_t len) {
