@@ -7,11 +7,12 @@
 #include "pins.h"
 
 #define LORA_MAC_LINKCHECK 0x02
+#define LORA_MAC_LINKADR   0x03
 
 class LORAWAN {
   public:
     LORAWAN();
-    LORAWAN(uint8_t check_link_nth);
+    LORAWAN(uint8_t adr, uint8_t check_link_nth);
 
     void     init(pins_t *cs = &pins_csrfm, pins_t *dio0 = &pins_dio0, pins_t *dio1 = &pins_dio1);
     void     set_otaa(uint8_t *deveui, uint8_t *appeui, uint8_t *appkey, const uint16_t counter = 0);
@@ -29,6 +30,7 @@ class LORAWAN {
   private:
     Lora_otaa otaa = { .deveui={0}, .appeui={0}, .appkey={0}, .devnonce=0 };
     uint8_t  check_link_nth;
+    uint8_t  adr;
     RFM95 rfm95;
 
     void     send_join_request(uint8_t channel, uint8_t datarate);

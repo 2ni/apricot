@@ -21,6 +21,9 @@ typedef struct {
   uint8_t devaddr[4];
   uint16_t counter;
   uint8_t datarate;
+  uint8_t rxdelay;
+  uint8_t rxoffset;
+  uint8_t rx2datarate;
 } Lora_session;
 
 typedef struct {

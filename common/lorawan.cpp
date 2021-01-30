@@ -36,10 +36,12 @@
  */
 LORAWAN::LORAWAN() {
   check_link_nth = 0;
+  adr = 1;
 }
 
-LORAWAN::LORAWAN(uint8_t i_check_link_nth) {
+LORAWAN::LORAWAN(uint8_t iadr, uint8_t i_check_link_nth) {
   check_link_nth = i_check_link_nth;
+  adr = iadr ? 1 : 0;
 }
 
 void LORAWAN::set_otaa(uint8_t *deveui, uint8_t *appeui, uint8_t *appkey, const uint16_t counter) {
@@ -47,6 +49,8 @@ void LORAWAN::set_otaa(uint8_t *deveui, uint8_t *appeui, uint8_t *appkey, const 
   aes128_copy_array(otaa.appeui, appeui, 8);
   aes128_copy_array(otaa.appkey, appkey, 16);
   session.counter = counter;
+  session.rxdelay = 0;
+  session.rxoffset = 0;
 }
 
 void LORAWAN::set_abp(uint8_t *devaddr, uint8_t *nwkskey, uint8_t *appskey, const uint16_t counter) {
@@ -54,6 +58,8 @@ void LORAWAN::set_abp(uint8_t *devaddr, uint8_t *nwkskey, uint8_t *appskey, cons
   aes128_copy_array(session.nwkskey, nwkskey, 16);
   aes128_copy_array(session.appskey, appskey, 16);
   session.counter = counter;
+  session.rxdelay = 0;
+  session.rxoffset = 0;
 }
 
 /*
@@ -263,6 +269,9 @@ Status LORAWAN::send(const Packet *payload, Packet *rx_payload, uint8_t ack) {
 Status LORAWAN::send(const Packet *payload, Packet *rx_payload, const uint8_t datarate, uint8_t ack) {
   uint8_t len = payload->len+13;
   uint8_t tx_cmds[1] = {0};
+  uint8_t tx_datarate = datarate ? datarate : session.datarate;
+
+  ack = ack ? 1 : 0; // ensure only LSB is set
   // simple modulo, sending LinkCheckReq every 2^check_link_nth
   uint8_t do_check = check_link_nth && session.counter && ((session.counter>>check_link_nth)*(1<<check_link_nth) == session.counter);
   if (do_check) {
@@ -281,15 +290,15 @@ Status LORAWAN::send(const Packet *payload, Packet *rx_payload, const uint8_t da
     millis_init();
   }
 
-  rfm95.send(&lora, channel, datarate ? datarate : session.datarate);
+  rfm95.send(&lora, channel, tx_datarate);
   uint32_t now = millis_time();
   session.counter++;
-  DF("package sent ch%u SF%u\n", channel, datarate ? datarate : session.datarate);
+  DF("package sent ch%u SF%u\n", channel, tx_datarate);
 
   uint8_t rx_channel = channel;
-  uint8_t rx_datarate = datarate ? datarate : session.datarate;
+  uint8_t rx_datarate = tx_datarate + session.rxoffset;
 
-  uint16_t sleep_window_rx1 = 990;
+  uint16_t sleep_window_rx1 = session.rxdelay*1000-10; // convert in ms, for 1s -> 990ms
 
   /*
   rx_channel = 99;
@@ -329,6 +338,7 @@ Status LORAWAN::send(const Packet *payload, Packet *rx_payload, const uint8_t da
       if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK) {
         DL(OK("received rx1"));
         // TODO if do_check and no LORA_MAC_LINKCHECK received -> rejoin
+        // TODO handle adr LinkADRReq, LinkADRAns (add to buffer to send on next uplink)
         status_received = decode_data_down(rx_payload, &rx_cmds, ack);
         if (rx_cmds.len) {
           uart_arr("rx cmds", rx_cmds.data, rx_cmds.len);
@@ -340,7 +350,7 @@ Status LORAWAN::send(const Packet *payload, Packet *rx_payload, const uint8_t da
 
     // rx2 window
     rx_channel = 99;
-    rx_datarate = 9;
+    rx_datarate = session.rx2datarate;
     DF("(%lu) RX2: waiting for data ch%u SF%u\n", millis_time()-now, rx_channel, rx_datarate);
     // while ((millis_time()-now) < 2020);
     sleep_ms(sleep_window_rx1+990-(millis_time()-now));
@@ -512,14 +522,19 @@ Status LORAWAN::decode_join_accept() {
     session.devaddr[i] = phy.data[10-i];
   }
 
+  session.rxdelay = phy.data[12];
+  session.rxoffset = (phy.data[11]>>4) & 0x07; // dlsettings[6..4]
+  session.rx2datarate = 12 - (phy.data[11] & 0x07);   // dlsettings[3..0] returns DRx, DR0=SF12, DR6=SF07
+  // DF("dlsettings: 0x%02x\n", phy.data[11]);
+  // DF("rxdelay: %u\n", session.rxdelay);
+  // DF("rxoffset: %u\n", session.rxoffset);
+  // DF("rx2datarate: %u\n", session.rx2datarate);
+
   // cflist = list of frequencies
   // uart_arr("appskey", session.appskey, 16);
   // uart_arr("nwkskey", session.nwkskey, 16);
   // uart_arr("devaddr", session.devaddr, 4);
   /*
-  DF("rxdelay: %u\n", msg[12]);
-  DF("rx2 datarate: SF%u\n", 12-(msg[11] & 0x0F));
-  DF("rx1 dr offset: 0x%02x\n", (msg[11] & 0x70) > 4);
   // frq
   uint32_t frq;
   for (uint8_t i=0; i<5; i++) {
@@ -606,8 +621,9 @@ void LORAWAN::cipher(Packet *payload, const uint16_t counter, const uint8_t dire
  *
  * cipher: 61 62 63 -> 6f c9 03
  *
- * TODO mac cmds as data frame with fport=0 (encrypted)
- * TODO send / receive ack
+ * TODO send mac cmds as data frame with fport=0 (encrypted)
+ * TODO respond to ack requests from gw (downlink)
+ *
  */
 void LORAWAN::create_package(const Packet *payload, Packet *lora, uint8_t ack, uint8_t *cmds) {
   uint8_t cmds_count = lora->len - payload->len - 13;
@@ -617,9 +633,9 @@ void LORAWAN::create_package(const Packet *payload, Packet *lora, uint8_t ack, u
   uint8_t direction = 0;
 
   // header
-  lora->data[0] = (0x40<<(ack & 0x01));                                 // mhdr(1), mtype=010: unconfirmed data uplink (unconfirmed: 0x40, confirmed: 0x80)
+  lora->data[0] = (0x40<<ack);                                          // mhdr(1), data uplink (unconfirmed: 0x40, confirmed: 0x80)
   for (uint8_t i=0; i<4; i++) lora->data[1+i] = session.devaddr[3-i];   // devaddr(4)
-  lora->data[5] = 0x00 | cmds_count;                                    // fctrl(1) TODO support adr, respond ack requests: 0x20
+  lora->data[5] = (adr<<7) | cmds_count;                                // fctrl(1) respond ack requests: 0x20
   lora->data[6] = (session.counter & 0x00ff);                           // fcnt(1) tx counter lsb
   lora->data[7] = ((session.counter >> 8) & 0x00ff);                    // fcnt(1) tx counter msb
   for (uint8_t i=0; i<cmds_count; i++) {                                // fopts(0..15) mac commands
