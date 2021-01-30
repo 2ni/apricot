@@ -53,7 +53,7 @@ int main(void) {
     uart_arr("appskey", lora.session.appskey, 16);
     uart_arr("nwkskey", lora.session.nwkskey, 16);
     uart_arr("devaddr", lora.session.devaddr, 4);
-    DF("datarate: %u\n", lora.session.datarate);
+    // DF("datarate: %u\n", lora.session.datarate);
     DF("counter: %u\n", lora.session.counter);
     Status status = lora.send(&payload, &rx_packet);
     eeprom_update_word(&ee_session.counter, lora.session.counter);
