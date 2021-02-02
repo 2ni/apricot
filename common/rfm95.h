@@ -6,7 +6,8 @@
 
 class RFM95 {
   public:
-    RFM95(pins_t *cs = &pins_csrfm, pins_t *dio0 = &pins_dio0, pins_t *dio1 = &pins_dio1);
+    // RFM95(pins_t *cs = &pins_csrfm, pins_t *dio0 = &pins_dio0, pins_t *dio1 = &pins_dio1);
+    RFM95(pins_t *cs = &pins_csrfm);
 
     uint8_t  init();
     void     select();
@@ -17,9 +18,8 @@ class RFM95 {
     void     receive_continuous(uint8_t channel, uint8_t datarate);
     Status   wait_for_single_package(uint8_t channel, uint8_t datarate);
     Status   read(Packet *packet);
-    void     set_mode(uint8_t mode);
+    uint8_t  set_mode(uint8_t mode);
     void     setpower(int8_t power);
-    void     sleep();
     uint32_t get_random(uint8_t bits=32);
     void     set_datarate(uint8_t rate);
     void     set_channel(uint8_t channel);

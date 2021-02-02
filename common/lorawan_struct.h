@@ -20,10 +20,11 @@ typedef struct {
   uint8_t appskey[16];
   uint8_t devaddr[4];
   uint16_t counter;
-  uint8_t datarate;
-  uint8_t rxdelay;
-  uint8_t rxoffset;
-  uint8_t rx2datarate;
+  uint8_t txdatarate;  // datarate with which we send
+  uint8_t rxdelay;     // delay for 1st rx window in seconds
+  uint8_t rxoffset;    // datarate offset between tx and rx
+  uint8_t rx2datarate; // datarate for 2nd rx window
+  uint8_t txpower;     // power with which we send
 } Lora_session;
 
 typedef struct {

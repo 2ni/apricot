@@ -35,10 +35,11 @@
 #include "pins.h"
 #include "uart.h"
 
-RFM95::RFM95(pins_t *ics, pins_t *idio0, pins_t *idio1) {
+// RFM95::RFM95(pins_t *ics, pins_t *idio0, pins_t *idio1) {
+RFM95::RFM95(pins_t *ics) {
   cs = ics;
-  dio0 = idio0;
-  dio1 = idio1;
+  // dio0 = idio0;
+  // dio1 = idio1;
 }
 
 uint8_t RFM95::init() {
@@ -46,8 +47,8 @@ uint8_t RFM95::init() {
   pins_output(cs, 1); // set as output
   pins_set(cs, 1);    // set high (spi bus disabled by default)
 
-  pins_output(dio0, 0); // input, DIO0
-  pins_output(dio1, 0); // input, DIO1
+  // pins_output(dio0, 0); // input, DIO0
+  // pins_output(dio1, 0); // input, DIO1
 
   // reset might be an issue
   uint8_t version = read_reg(0x42);
@@ -55,26 +56,19 @@ uint8_t RFM95::init() {
     return 0; // failure
   }
 
-  // sleep
-  write_reg(0x01, 0x00);
+  // sleep to switch to lora mode
+  write_reg(0x01, 0x00 | 0x80);
+  sleep_ms(1);
+  // ensure we successfully switched to lora
+  if (read_reg(0x01) != 0x80) {
+    return 0;
+  }
 
-  // lora mode
-  write_reg(0x01, 0x80);
-
-  // standby mode and lora mode
-  write_reg(0x01, 0x81);
-  // TODO delay needed?
-  // _delay_ms(10);
-
-  // set carrier frequency
-  set_channel(0);
-
-  // SW12, 125kHz
-  set_datarate(12);
-
-  // PA minimal power 17dbm
-  setpower(9);
-  // write_reg(0x09, 0xF0);
+  // set fifo pointers
+  // tx base address
+  write_reg(0x0E, 0x80);
+  // rx base adress
+  write_reg(0x0F, 0x00);
 
   // rx timeout set to 37 symbols
   write_reg(0x1F, 0x25);
@@ -88,18 +82,21 @@ uint8_t RFM95::init() {
   write_reg(0x39, 0x34);
 
   // set iq to normal values
-  write_reg(0x33, 0x27);
-  write_reg(0x3B, 0x1D);
+  // write_reg(0x33, 0x27);
+  // write_reg(0x3B, 0x1D);
 
-  // set fifo pointers
-  // tx base address
-  write_reg(0x0E, 0x80);
-  // rx base adress
-  write_reg(0x0F, 0x00);
+  // set carrier frequency
+  set_channel(0);
 
-  // switch rfm to sleep
-  sleep();
-  // write_reg(0x01, 0x80);
+  // SW12, 125kHz
+  set_datarate(12);
+
+  // disable current protection
+  // write_reg(0x0b, 0);
+
+  setpower(12);
+  // DF("regpaconfig: 0x%02x\n", read_reg(0x09));
+  set_mode(0); // sleep
 
   return version;
 }
@@ -140,14 +137,11 @@ void RFM95::write_reg(uint8_t addr, uint8_t value) {
  *
  */
 void RFM95::receive_continuous(uint8_t channel, uint8_t datarate) {
-  write_reg(0x40, 0x00); // DIO0 -> rxdone
-
   // invert iq back
-  write_reg(0x33, 0x67);
-  write_reg(0x3B, 0x19);
+  // write_reg(0x33, 0x67);
+  // write_reg(0x3B, 0x19);
 
-  write_reg(0x01, 0x81); // standby mode
-  // _delay_ms(10);
+  set_mode(1); // standby
 
   // set downlink carrier frq
   set_channel(channel); // eg 99: 869.525MHz
@@ -156,7 +150,7 @@ void RFM95::receive_continuous(uint8_t channel, uint8_t datarate) {
   // set hop frequency period to 0
   write_reg(0x24, 0x00);
 
-  write_reg(0x01, 0x85); // continuous rx
+  set_mode(5); // continuous rx
   DF("listening on ch%u SF%u\n", channel, datarate);
 }
 
@@ -171,28 +165,37 @@ void RFM95::receive_continuous(uint8_t channel, uint8_t datarate) {
  * 1: timeout
  */
 Status RFM95::wait_for_single_package(uint8_t channel, uint8_t datarate) {
-  write_reg(0x40, 0x00); // DIO0 -> rxdone
+  // write_reg(0x40, 0x00); // DIO0 -> rxdone
 
   //invert iq back
-  write_reg(0x33, 0x67);
-  write_reg(0x3B, 0x19);
+  // write_reg(0x33, 0x67);
+  // write_reg(0x3B, 0x19);
 
   // set downlink carrier frq
   set_channel(channel);
   set_datarate(datarate);
 
-  write_reg(0x01, 0x86); // single rx
+  set_mode(6); // single rx
 
   // wait for rx done or timeout
-  while (pins_get(dio0) == 0 && pins_get(dio1) == 0) {}
+  uint8_t timeout = 0;
+  while (1) {
+    timeout = read_reg(0x12) & 0x80;
+    if ((read_reg(0x12) & 0x40) || timeout) {
+      break;
+    }
+  }
+  // while (pins_get(dio0) == 0 && pins_get(dio1) == 0) {}
 
-  if (pins_get(dio1) == 1) {
-    write_reg(0x12, 0xE0); // clear interrupt
+  // if (pins_get(dio1) == 1) {
+  if (timeout) {
+    write_reg(0x12, 0xff); // clear interrupt
     // DL(NOK("timeout"));
     return TIMEOUT;
   }
   // DL(OK("packet!"));
 
+  write_reg(0x12, 0xff); // clear interrupt
   return OK;
 }
 
@@ -218,8 +221,8 @@ Status RFM95::read(Packet *packet) {
     packet->data[i] = read_reg(0x00);
   }
 
-  write_reg(0x12, 0xE0); // clear interrupt register
-  sleep();
+  write_reg(0x12, 0xff); // clear interrupt register
+  set_mode(0); // sleep
 
   return status;
 }
@@ -232,21 +235,20 @@ Status RFM95::read(Packet *packet) {
  * and mask-out the 3 least significant bits as a pointer to the channel
  */
 void RFM95::send(const Packet *packet, const uint8_t channel, const uint8_t datarate) {
-  // set rfm in standby mode and lora mode
-  write_reg(0x01, 0x81);
+  set_mode(1); // standby
 
   // switch DIO0 to TxDone
   // 0x40: RegDioMapping1, bits 7, 6
   // 00: rxdone
   // 01: txdone
-  write_reg(0x40, 0x40);
+  // write_reg(0x40, 0x40);
 
   set_channel(channel); // eg 4 868.1MHz
   set_datarate(datarate); // eg 12 for SF12
 
   // set IQ to normal values
-  write_reg(0x33, 0x27);
-  write_reg(0x3B, 0x1D);
+  // write_reg(0x33, 0x27);
+  // write_reg(0x3B, 0x1D);
 
   write_reg(0x22, packet->len); // set length
 
@@ -259,14 +261,16 @@ void RFM95::send(const Packet *packet, const uint8_t channel, const uint8_t data
     write_reg(0x00, packet->data[i]);
   }
 
-  write_reg(0x01, 0x83); // switch rfm to tx
+  // DL("rfm95 sending...");
+  if (set_mode(3) == 0) { // tx
+    while (!(read_reg(0x12) & 0x08)) { }
+    //while(pins_get(dio0) == 0) {} // wait for txdone
+  }
+  // DL("done");
 
-  while(pins_get(dio0) == 0) {} // wait for txdone
+  write_reg(0x12, 0xff); // clear interrupt
 
-  write_reg(0x12, 0x08); // clear interrupt
-
-  sleep();
-  // write_reg(0x01, 0x80); // switch rfm to sleep
+  set_mode(0); // sleep
 
   // uart_arr(WARN("pkg sent"), packet->data, packet->len);
 }
@@ -282,8 +286,26 @@ void RFM95::send(const Packet *packet, const uint8_t channel, const uint8_t data
  * 6 = receiver single
  * 7 = channel activity detection
  */
-void RFM95::set_mode(uint8_t mode) {
-  write_reg(0x01, 0x80 | mode);
+uint8_t RFM95::set_mode(uint8_t mode) {
+  write_reg(0x01, (read_reg(0x01) & ~0x07) | mode);
+  sleep_ms(1); // ensure we swtiched mode
+  if ((read_reg(0x01) & 0x07) != mode) {
+    // attempt to reset device
+    DF(NOK("mode switch failed: %03x -> %03x") "\n", read_reg(0x01) & 0x07, mode);
+    write_reg(0x01, 0x00);
+    sleep_ms(1);
+    write_reg(0x01, 0x80);
+    sleep_ms(1);
+    uint8_t i=0;
+    while (i<20) {
+      write_reg(0x01, 0x83);
+      sleep_ms(10);
+      if (read_reg(0x01) == 0x83) break;
+      i++;
+    }
+    return 1;
+  }
+  return 0;
 }
 
 /*
@@ -296,10 +318,10 @@ void RFM95::set_mode(uint8_t mode) {
  *
  */
 void RFM95::setpower(int8_t power) {
-  if (power > 23) power = 23;
-  if (power < 5) power = 5;
+  if (power > 20) power = 20;
+  if (power < 2) power = 2;
 
-  if (power > 20) {
+  if (power > 17) {
     write_reg(0x4d, 0x07); // RH_RF95_PA_DAC_ENABLE: adds ~3dBm to all power levels, use it for 21, 22, 23dBm
     power -= 3;
   } else {
@@ -307,17 +329,7 @@ void RFM95::setpower(int8_t power) {
   }
 
   // RegPAConfig MSB = 1 to choose PA_BOOST
-  //
-  write_reg(0x09, 0x80 | (power-5));
-}
-
-/*
- *
- * set transmitter to sleep
- * set bit 2..0: 000
- */
-void RFM95::sleep() {
-  write_reg(0x01, (read_reg(0x01) & ~0x07) | 0x00);
+  write_reg(0x09, 0x80 | (power-2));
 }
 
 /*
@@ -332,17 +344,14 @@ uint32_t RFM95::get_random(uint8_t bits) {
   // write_reg(0x11, 0x80 | 0x40 | 0x20 | 0x10 | 0x08 | 0x04 | 0x02 | 0x01);
   // DF("interrupts: 0x%02x\n", read_reg(0x11));
 
-  // continuous receive
-  write_reg(0x01, 0x85);
+  set_mode(5); // continuous receive
 
   for (uint8_t i=0; i<bits; i++) {
     _delay_us(100);
     rnd |= ((uint32_t)read_reg(0x2C) & 0x01 ) << i; // unfiltered RSSI value reading (lsb value)
   }
 
-  // set to sleep
-  sleep();
-  // write_reg(0x01, 0x80);
+  set_mode(0); // sleep
 
   return rnd;
 }

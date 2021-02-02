@@ -33,10 +33,17 @@
 
 /*
  * check the link every 2^check_link_nth package sent
+ * when adr these defaults are set:
+ * - max allowed tx power
+ * - data rate from join or minimum (SF12)
+ *
+ * if datarate > proposed datarate || txpower < proposed txpower or to check connectivity:
+ * set ADRACKReq after n transmissiosn -> GW must respond. If received -> clear ADRACKReq
+ * if not received -> set txpower to default, then switch to next lower data rate
+ * at the end rejoin
  */
 LORAWAN::LORAWAN() {
-  check_link_nth = 0;
-  adr = 1;
+  LORAWAN(1, 0);
 }
 
 LORAWAN::LORAWAN(uint8_t iadr, uint8_t i_check_link_nth) {
@@ -44,13 +51,10 @@ LORAWAN::LORAWAN(uint8_t iadr, uint8_t i_check_link_nth) {
   adr = iadr ? 1 : 0;
 }
 
-void LORAWAN::set_otaa(uint8_t *deveui, uint8_t *appeui, uint8_t *appkey, const uint16_t counter) {
+void LORAWAN::set_otaa(uint8_t *deveui, uint8_t *appeui, uint8_t *appkey) {
   aes128_copy_array(otaa.deveui, deveui, 8);
   aes128_copy_array(otaa.appeui, appeui, 8);
   aes128_copy_array(otaa.appkey, appkey, 16);
-  session.counter = counter;
-  session.rxdelay = 0;
-  session.rxoffset = 0;
 }
 
 void LORAWAN::set_abp(uint8_t *devaddr, uint8_t *nwkskey, uint8_t *appskey, const uint16_t counter) {
@@ -58,16 +62,31 @@ void LORAWAN::set_abp(uint8_t *devaddr, uint8_t *nwkskey, uint8_t *appskey, cons
   aes128_copy_array(session.nwkskey, nwkskey, 16);
   aes128_copy_array(session.appskey, appskey, 16);
   session.counter = counter;
-  session.rxdelay = 0;
-  session.rxoffset = 0;
 }
 
 /*
  * to avoid tests blocking, this needs to be in a separate function
  * which must be called in the real programm but not in the test suite
  */
-void LORAWAN::init(pins_t *cs, pins_t *dio0, pins_t *dio1) {
-  RFM95 rfm95(cs, dio0, dio1);
+// void LORAWAN::init(pins_t *cs, pins_t *dio0, pins_t *dio1) {
+void LORAWAN::init(pins_t *cs) {
+  session.counter = 10;
+  session.rxdelay = 0;
+  session.rxoffset = 0;
+  session.rx2datarate = 9;
+  session.txpower = 16;
+
+  /*
+  uint8_t f[16] = { 0xF0, 0x99, 0x27, 0xA6, 0x77, 0x4E, 0x47, 0x35, 0x5D, 0xDE, 0x94, 0x43, 0xC5, 0x15, 0x17, 0xAB };
+  for (uint8_t i=0; i<16; i++) session.nwkskey[i] = f[i];
+  uint8_t g[16] = { 0xBC, 0x31, 0x2D, 0x42, 0xEF, 0x25, 0x5B, 0x0A, 0x2A, 0xD2, 0xAC, 0xFE, 0xED, 0x88, 0x5E, 0x66 };
+  for (uint8_t i=0; i<16; i++) session.appskey[i] = g[i];
+  uint8_t h[4] = {0x26, 0x01, 0x42, 0xd1};
+  for (uint8_t i=0; i<4; i++) session.devaddr[i] = h[i];
+  */
+
+  // RFM95 rfm95(cs, dio0, dio1);
+  RFM95 rfm95(cs);
   uint8_t version = rfm95.init();
   if (!version) {
     DL(NOK("RFM95 init failed. Stopped."));
@@ -168,8 +187,7 @@ Status LORAWAN::join(uint8_t wholescan) {
       sleep_ms(sleep_window_rx1-(millis_time()-now));
       now = millis_time();
       if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK && decode_join_accept() == OK) {
-        session.datarate = tx_datarate;
-        session.counter = 0;
+        session.txdatarate = tx_datarate;
         valid_lora = 1;
       }
       /*
@@ -208,8 +226,7 @@ Status LORAWAN::join(uint8_t wholescan) {
     // while ((millis_time()-now) < (6060)) {}
     sleep_ms(sleep_window_rx1+990-(millis_time()-now));
     if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK && decode_join_accept() == OK) {
-      session.datarate = tx_datarate;
-      session.counter = 0;
+      session.txdatarate = tx_datarate;
       valid_lora = 1;
     }
     /*
@@ -239,7 +256,9 @@ Status LORAWAN::join(uint8_t wholescan) {
     trials++;
     if (trials < num_trials) {
       // DL(NOK("timeout!"));
-      uint8_t sleep_time = (uint8_t)(5+rfm95.get_random(8) / 8);
+      // TODO sleep 15sec, 30sec, 1min, 5min, 30min, 60min (repeat)
+      // https://lora-developers.semtech.com/library/tech-papers-and-guides/the-book/joining-and-rejoining/
+      uint8_t sleep_time = wholescan ? 5 : (uint8_t)(5+rfm95.get_random(8) / 8);
       DF("sleeping: %us\n", sleep_time);
       sleep_s(sleep_time); // sleep random time 5-37sec
     }
@@ -269,19 +288,20 @@ Status LORAWAN::send(const Packet *payload, Packet *rx_payload, uint8_t ack) {
 Status LORAWAN::send(const Packet *payload, Packet *rx_payload, const uint8_t datarate, uint8_t ack) {
   uint8_t len = payload->len+13;
   uint8_t tx_cmds[1] = {0};
-  uint8_t tx_datarate = datarate ? datarate : session.datarate;
+  uint8_t tx_datarate = datarate ? datarate : session.txdatarate;
 
   ack = ack ? 1 : 0; // ensure only LSB is set
   // simple modulo, sending LinkCheckReq every 2^check_link_nth
   uint8_t do_check = check_link_nth && session.counter && ((session.counter>>check_link_nth)*(1<<check_link_nth) == session.counter);
   if (do_check) {
-    len += 1;
-    tx_cmds[0] = LORA_MAC_LINKCHECK;
+    queue_cmd_tx[queue_p] = LORA_MAC_LINKCHECK;
+    queue_p++;
   }
+  // TODO len += queue_p;
   uint8_t data[len];
   memset(data, 0, len);
   Packet lora = { .data=data, .len=len };
-  create_package(payload, &lora, ack, tx_cmds);
+  create_package(payload, &lora, ack, 0, tx_cmds);
 
   uint8_t channel = (uint8_t)(rfm95.get_random(2)); // random channel 0-3
 
@@ -338,9 +358,10 @@ Status LORAWAN::send(const Packet *payload, Packet *rx_payload, const uint8_t da
       if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK) {
         DL(OK("received rx1"));
         // TODO if do_check and no LORA_MAC_LINKCHECK received -> rejoin
-        // TODO handle adr LinkADRReq, LinkADRAns (add to buffer to send on next uplink)
+        // TODO handle adr LinkADRReq, LinkADRAns (add to queue to send on next uplink)
         status_received = decode_data_down(rx_payload, &rx_cmds, ack);
         if (rx_cmds.len) {
+          process_cmds(&rx_cmds);
           uart_arr("rx cmds", rx_cmds.data, rx_cmds.len);
         }
         return status_received;
@@ -366,6 +387,40 @@ Status LORAWAN::send(const Packet *payload, Packet *rx_payload, const uint8_t da
     return OK;
   } else {
     return OK;
+  }
+}
+
+void LORAWAN::process_cmds(Packet *cmds) {
+  uint8_t p=0;
+  uint8_t cmd;
+
+  while (p<cmds->len) {
+    cmd = cmds->data[p];
+    if (cmd == LORA_MAC_LINKADR) {
+      uint8_t datarate = cmds->data[p+1] >> 4;   // convert to SF7-12. DR0=SF12, DR5=SF7
+      uint8_t txpower = cmds->data[p+1] & 0x0f;  // 0=max, 1=max-2db, ... 7=max-14db, max should be 16db, but RFM95: 23db-9db
+      // TODO ChMask, ChaskCntl, Nbtrans not implemented yet
+
+      if (datarate != 0x0f) {
+        session.txdatarate = 12 - datarate;     // convert to SF7-12. DR0=SF12, DR5=SF7
+      }
+
+      if (txpower != 0x0f) {
+        session.txpower = 16 - 2*txpower;  // 0=max, 1=max-2db, ... 7=max-14db
+      }
+      queue_cmd_tx[queue_p] = LORA_MAC_LINKADR;
+      queue_p++;
+      queue_cmd_tx[queue_p] = 0x06; // PowerACK | DataRateACK (we don't ack channel, as not yet implemented)
+      queue_p++;
+      p += 4;
+    } else if (cmd == LORA_MAC_CYCLE) {
+    } else if (cmd == LORA_MAC_RXPARAM) {
+    } else if (cmd == LORA_MAC_DEVSTATUS) {
+    } else if (cmd == LORA_MAC_NEWCHANNEL) {
+    } else if (cmd == LORA_MAC_RXTIMING) {
+    } else if (cmd == LORA_MAC_TXPARAM) {
+    } else if (cmd == LORA_MAC_DICHANNEL) {
+    }
   }
 }
 
@@ -431,11 +486,11 @@ Status LORAWAN::decode_data_down(Packet *payload, Packet *rx_cmds, uint8_t ack_r
   uint8_t fctrl = phy.data[5];
   // DF("fctrl: 0x%02x\n", fctrl);
   uint8_t frame_options_len = (fctrl & 0x07); // FCtrl[3..0] if set, we have some options (=mac cmds)
-  uint8_t ack_received = (fctrl & 0x20);      // FCtrl[5] if ack was requested while sending, this ack should be set in the response
-  uint8_t adr = (fctrl & 0x80);               // FCtrl[7]
+  uint8_t ack_received = ((fctrl>>5) & 0x01); // FCtrl[5] if ack was requested while sending, this ack should be set in the response
+  uint8_t adr = ((fctrl>>7) & 0x01);               // FCtrl[7]
   // DF("foptslen: %u\n", frame_options_len);
   DF("ack received: %u\n", ack_received);
-  DF("adr: %u\n", adr);
+  DF("adr received: %u\n", adr);
   // we got mac commands
   if (frame_options_len) {
     rx_cmds->len = frame_options_len;
@@ -461,6 +516,14 @@ Status LORAWAN::decode_data_down(Packet *payload, Packet *rx_cmds, uint8_t ack_r
   }
 }
 
+/*
+ * TODO save frequencies for channel 3-7 on join accept message
+ * uint8_t[8] frequencies;
+ * uint8_t[8] channels; (8 is max length)
+ *
+ * TODO configure which channels can be used in the session
+ * TODO LinkADRReq mac cmd sets the channels
+ */
 Status LORAWAN::decode_join_accept() {
   uint8_t datap[64] = {0};
   Packet phy = { .data=datap, .len=64 }; // PhyPayload MHDR(1) MAC Payload|Join Accept MIC(4)
@@ -507,8 +570,9 @@ Status LORAWAN::decode_join_accept() {
   // dlsettings = phy.data[11]
   // rxdelay    = phy.data[12]
   // cflist     = phy.data[13..29]
+  for (uint8_t i=0; i<16; i++) session.appskey[i] = 0x00; // be sure to clear, ie also if we already have a key from earlier joins
   session.appskey[0] = 0x02;
-  for(uint8_t i=1; i<7; i++) {
+  for(uint8_t i=1; i<7; i++) { // apnonce(3) netid(3)
     session.appskey[i] = phy.data[i];
   }
   session.appskey[7] = otaa.devnonce & 0x00ff;
@@ -525,6 +589,7 @@ Status LORAWAN::decode_join_accept() {
   session.rxdelay = phy.data[12];
   session.rxoffset = (phy.data[11]>>4) & 0x07; // dlsettings[6..4]
   session.rx2datarate = 12 - (phy.data[11] & 0x07);   // dlsettings[3..0] returns DRx, DR0=SF12, DR6=SF07
+  session.counter = 0;
   // DF("dlsettings: 0x%02x\n", phy.data[11]);
   // DF("rxdelay: %u\n", session.rxdelay);
   // DF("rxoffset: %u\n", session.rxoffset);
@@ -623,9 +688,10 @@ void LORAWAN::cipher(Packet *payload, const uint16_t counter, const uint8_t dire
  *
  * TODO send mac cmds as data frame with fport=0 (encrypted)
  * TODO respond to ack requests from gw (downlink)
+ * TODO process queue_cmd_tx
  *
  */
-void LORAWAN::create_package(const Packet *payload, Packet *lora, uint8_t ack, uint8_t *cmds) {
+void LORAWAN::create_package(const Packet *payload, Packet *lora, uint8_t ack, uint8_t adrack, uint8_t *cmds) {
   uint8_t cmds_count = lora->len - payload->len - 13;
   if (cmds_count > 15) cmds_count = 15;
   // DF("cmds_count: %u\n", cmds_count);
@@ -635,7 +701,8 @@ void LORAWAN::create_package(const Packet *payload, Packet *lora, uint8_t ack, u
   // header
   lora->data[0] = (0x40<<ack);                                          // mhdr(1), data uplink (unconfirmed: 0x40, confirmed: 0x80)
   for (uint8_t i=0; i<4; i++) lora->data[1+i] = session.devaddr[3-i];   // devaddr(4)
-  lora->data[5] = (adr<<7) | cmds_count;                                // fctrl(1) respond ack requests: 0x20
+  lora->data[5] = (adrack<<6) | (adr<<7) | cmds_count;                  // fctrl(1) adr[7] adrackreq[6] ack[5] rfu[4] foptslen[3..0]
+  // lora->data[5] = (adr<<7) | cmds_count;                                // fctrl(1) adr[7] adrackreq[6] ack[5] rfu[4] foptslen[3..0]
   lora->data[6] = (session.counter & 0x00ff);                           // fcnt(1) tx counter lsb
   lora->data[7] = ((session.counter >> 8) & 0x00ff);                    // fcnt(1) tx counter msb
   for (uint8_t i=0; i<cmds_count; i++) {                                // fopts(0..15) mac commands
