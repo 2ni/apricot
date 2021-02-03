@@ -164,7 +164,7 @@ Status LORAWAN::join(uint8_t wholescan) {
     tx_channel = (tx_channel+1) % 3; // iterate through channel 0..2
     rx_channel = tx_channel;
     rx_datarate = tx_datarate;
-    uint16_t sleep_window_rx1= 4990;
+    uint16_t sleep_window_rx1= 4995;
 
     // use correct datarates, channels for join request and accept listening
     // see "receive windows" in https://lora-alliance.org/sites/default/files/2018-05/lorawan_regional_parameters_v1.0.2_final_1944_1.pdf
@@ -224,7 +224,7 @@ Status LORAWAN::join(uint8_t wholescan) {
     // timer.stop();
     DF("(%lu) RX2: waiting for data ch%u SF%u (air: %u)\n", millis_time()-now, rx_channel, rx_datarate, airtime);
     // while ((millis_time()-now) < (6060)) {}
-    sleep_ms(sleep_window_rx1+990-(millis_time()-now));
+    sleep_ms(sleep_window_rx1+995-(millis_time()-now));
     if (rfm95.wait_for_single_package(rx_channel, rx_datarate) == OK && decode_join_accept() == OK) {
       session.txdatarate = tx_datarate;
       valid_lora = 1;

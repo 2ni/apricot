@@ -81,10 +81,6 @@ uint8_t RFM95::init() {
   // set lora sync word (0x34)
   write_reg(0x39, 0x34);
 
-  // set iq to normal values
-  // write_reg(0x33, 0x27);
-  // write_reg(0x3B, 0x1D);
-
   // set carrier frequency
   set_channel(0);
 
@@ -96,6 +92,7 @@ uint8_t RFM95::init() {
 
   setpower(12);
   // DF("regpaconfig: 0x%02x\n", read_reg(0x09));
+
   set_mode(0); // sleep
 
   return version;
@@ -137,10 +134,6 @@ void RFM95::write_reg(uint8_t addr, uint8_t value) {
  *
  */
 void RFM95::receive_continuous(uint8_t channel, uint8_t datarate) {
-  // invert iq back
-  // write_reg(0x33, 0x67);
-  // write_reg(0x3B, 0x19);
-
   set_mode(1); // standby
 
   // set downlink carrier frq
@@ -167,10 +160,6 @@ void RFM95::receive_continuous(uint8_t channel, uint8_t datarate) {
 Status RFM95::wait_for_single_package(uint8_t channel, uint8_t datarate) {
   // write_reg(0x40, 0x00); // DIO0 -> rxdone
 
-  //invert iq back
-  // write_reg(0x33, 0x67);
-  // write_reg(0x3B, 0x19);
-
   // set downlink carrier frq
   set_channel(channel);
   set_datarate(datarate);
@@ -178,25 +167,17 @@ Status RFM95::wait_for_single_package(uint8_t channel, uint8_t datarate) {
   set_mode(6); // single rx
 
   // wait for rx done or timeout
-  uint8_t timeout = 0;
+  uint8_t f = 0;
   while (1) {
-    timeout = read_reg(0x12) & 0x80;
-    if ((read_reg(0x12) & 0x40) || timeout) {
+    f = read_reg(0x12);
+    if ((f & 0x40) || (f & 0x80)) {
       break;
     }
   }
-  // while (pins_get(dio0) == 0 && pins_get(dio1) == 0) {}
-
-  // if (pins_get(dio1) == 1) {
-  if (timeout) {
-    write_reg(0x12, 0xff); // clear interrupt
-    // DL(NOK("timeout"));
-    return TIMEOUT;
-  }
-  // DL(OK("packet!"));
+  // DF("reg: 0x%02x\n", f);
 
   write_reg(0x12, 0xff); // clear interrupt
-  return OK;
+  return (f & 0x80) ? TIMEOUT : OK;
 }
 
 /*
@@ -246,10 +227,6 @@ void RFM95::send(const Packet *packet, const uint8_t channel, const uint8_t data
   set_channel(channel); // eg 4 868.1MHz
   set_datarate(datarate); // eg 12 for SF12
 
-  // set IQ to normal values
-  // write_reg(0x33, 0x27);
-  // write_reg(0x3B, 0x1D);
-
   write_reg(0x22, packet->len); // set length
 
   uint8_t tx_pos = read_reg(0x0E);
@@ -288,7 +265,12 @@ void RFM95::send(const Packet *packet, const uint8_t channel, const uint8_t data
  */
 uint8_t RFM95::set_mode(uint8_t mode) {
   write_reg(0x01, (read_reg(0x01) & ~0x07) | mode);
-  sleep_ms(1); // ensure we swtiched mode
+  // wait for mode switched
+  while ((read_reg(0x01) & 0x07) != mode) {};
+  return 0;
+
+  // TODO might need to have a fallback for 0x03 (tx) which can hang sometimes
+  /*
   if ((read_reg(0x01) & 0x07) != mode) {
     // attempt to reset device
     DF(NOK("mode switch failed: %03x -> %03x") "\n", read_reg(0x01) & 0x07, mode);
@@ -298,14 +280,15 @@ uint8_t RFM95::set_mode(uint8_t mode) {
     sleep_ms(1);
     uint8_t i=0;
     while (i<20) {
-      write_reg(0x01, 0x83);
+      write_reg(0x01, 0x80 | mode);
       sleep_ms(10);
-      if (read_reg(0x01) == 0x83) break;
+      if ((read_reg(0x01) & 0x07) != mode) break;
       i++;
     }
     return 1;
   }
   return 0;
+  */
 }
 
 /*
