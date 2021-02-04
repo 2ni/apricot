@@ -90,7 +90,6 @@ void LORAWAN::init(pins_t *cs) {
   uint8_t version = rfm95.init();
   if (!version) {
     DL(NOK("RFM95 init failed. Stopped."));
-    while (1);
   } else {
     DF("RFM95 version: 0x%02x\n", version);
   }
