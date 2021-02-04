@@ -128,6 +128,9 @@ flash: all
 reset:
 	@$(PYUPDI) -r && echo "done" && echo "\a" && $(MAKE) serial  port=$(PORT) # && afplay /System/Library/Sounds/Ping.aiff -v 20
 
+resetonly:
+	@$(PYUPDI) -r
+
 # generate disassembly files for debugging
 disasm: $(PRJ).elf
 	#$(OBJDUMP) -d $(PRJ).elf
