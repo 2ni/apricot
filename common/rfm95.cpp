@@ -93,7 +93,12 @@ uint8_t RFM95::init() {
   setpower(12);
   // DF("regpaconfig: 0x%02x\n", read_reg(0x09));
 
+  // for some weird reasons it sometimes is in sleep mode with 1.5mA consumption
+  // if we don't set it in another mode 1st
+  set_mode(6);
   set_mode(0); // sleep
+
+  // DT_IH("reg", read_reg(0x01));
 
   return version;
 }
