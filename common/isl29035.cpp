@@ -87,11 +87,18 @@ uint8_t ISL29035::set_ranges(uint8_t _index_lux, uint8_t _index_adc) {
   return reg_write(ISL29035_CMDII, index_lux | (index_adc << 2));
 }
 
+/*
+ * index_adc:
+ * 0: 16 bit 105ms
+ * 1: 12 bit 6.5ms
+ * 2:  8 bit 0.41ms
+ * 3:  4 bit 0.0256ms
+ */
 uint8_t ISL29035::measure(uint8_t what, uint16_t *data) {
   reg_write(ISL29035_CMDI, what);
   uint8_t ms;
-  if (index_adc < 3) ms = 1;
-  else if (index_adc == 3) ms = 7;
+  if (index_adc > 1) ms = 1;
+  else if (index_adc == 1) ms = 7;
   else ms = 105;
 
   sleep_ms(ms);
