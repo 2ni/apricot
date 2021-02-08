@@ -10,6 +10,17 @@ int main(void) {
 
   twi_init();
 
+  DL("start scanning");
+  for (uint8_t addr = 0; addr<128; addr+=1) {
+    // DF("0x%02x: %s\n", addr, twi_start(addr) ? "-" : "yes");
+    if (!twi_start(addr)) {
+      DF("0x%02x\n", addr);
+    }
+    twi_stop();
+  }
+
+  DL("done.");
+
   uint8_t data[3] = {0};
 
   // read raw data from an SHT20
@@ -37,15 +48,4 @@ int main(void) {
     DF("error: %u\n", status);
   }
 
-
-  DL("start scanning");
-  for (uint8_t addr = 0; addr<128; addr+=1) {
-    // DF("0x%02x: %s\n", addr, twi_start(addr) ? "-" : "yes");
-    if (!twi_start(addr)) {
-      DF("0x%02x\n", addr);
-    }
-    twi_stop();
-  }
-
-  DL("done.");
 }
