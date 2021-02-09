@@ -141,5 +141,6 @@ disasm: $(PRJ).elf
 tests:
 	@$(MAKE) -C tests
 
+# TODO indent of patched python code is wrong and needs to manually corrected
 patchpyupdi:
-	sed -i '' 's/^\(\w*\)\(.*\) = serial.Serial(\([^\)]*\))/\1\2 = serial.serial_for_url(\3, rtscts=False, dsrdtr=False, do_not_open=True)\n\1\2.rts = 0  # needed so dtr reall gets 0v\n\1\2.dtr = 1\n\1\2.open()\n\1# dtr is only set when port is opened, and stable low after ~3ms\n\1# during that time some crap from uart can come in, which disturbs the updi communication\n\1time.sleep(.01)\n\1self.ser.flushInput()/' $(shell find foo -type f -name 'physical.py')
+	@sed -i '' 's/^\(\w*\)\(.*\) = serial.Serial(\([^\)]*\))/\1\2 = serial.serial_for_url(\3, rtscts=False, dsrdtr=False, do_not_open=True)\n\1\2.rts = 0  # needed so dtr reall gets 0v\n\1\2.dtr = 1\n\1\2.open()\n\1# dtr is only set when port is opened, and stable low after ~3ms\n\1# during that time some crap from uart can come in, which disturbs the updi communication\n\1time.sleep(.01)\n\1self.ser.flushInput()/' $(shell find pyupdi -type f -name 'physical.py')
