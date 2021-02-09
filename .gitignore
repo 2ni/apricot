@@ -16,3 +16,6 @@ pyupdi
 src/
 bin/
 iotn3217.h
+*.backup
+credentials.py
+LoRaMac-node
