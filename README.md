@@ -27,12 +27,21 @@ The shared usart for debugging and programming makes use of the DTR line to cont
 - DTR=1 -> updi mode (DTR outputs 0v)
 - DTR=0 -> uart debug mode (default, DTR outputs 3.3v)
 
+#### PYTHON
+```
+pyenv virtualenv 3.9.0 apricot
+pyenv local apricot
+pip install -r requirements
+```
+
 #### MICROCHIP TOOLCHAIN
-- download the newest [toolchain](https://www.microchip.com/mplab/avr-support/avr-and-arm-toolchains-c-compilers) from microchip (you need an account and to be logged in)
+- download the newest [toolchain](https://www.microchip.com/mplab/avr-support/avr-and-arm-toolchains-c-compilers) "AVR-8-bit Toolchain 3.6.2 - Mac OS X 64-bit "from microchip (you need an account and to be logged in)
 - download the newest [pack](http://packs.download.atmel.com/) from atmel (search for attiny3217 to get the correct pack)
 ```
 mkdir toolchain_microchip
 tar xfz avr8-gnu-toolchain-osx-3.6.2.514-darwin.any.x86_64.tar.gz -C toolchain_microchip
+cd toolchain_microchip; mv avr8-gnu-toolchain-darwin_x86_64/* .; rm -rf avr8-gnu-toolchain-darwin_x86_64/
+cd ..
 mkdir toolchain_microchip/pack
 unzip Atmel.ATtiny_DFP.1.8.332.atpack -d toolchain_microchip/pack/
 ```
@@ -43,7 +52,7 @@ don't forget to include <avr/io.h> in your main code!
 ```
 git clone git@github.com:mraardvark/pyupdi.git
 make patchpyupdi
-pip install -e pyupdi
+pip install -e pyupdi # IMPORTANT! install pyupdi to have correct pathes to use it
 ```
 
 This should result in the following change:
