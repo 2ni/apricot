@@ -16,15 +16,13 @@ client = serial.serial_for_url("/dev/cu.usbserial-1410", 115200, rtscts=False, d
 client.rts = 0  # must be set to 0 or dtr won't be 0v if 1
 client.dtr = 1  # 1=0v (updi) 0=3.3v (uart)
 client.open()
-while (True):
-    print(client.dtr)
-    time.sleep(1)
-    client.dtr ^= 1
 
 
 try:
     while True:
-        pass
+        print(client.dtr)
+        time.sleep(1)
+        client.dtr ^= 1
 except KeyboardInterrupt:
     client.close()
     print("closed")
