@@ -16,10 +16,15 @@ int main(void) {
 
   pins_disable_buffer();
 
+  // for low power
+  // disconnect 3.3u, updi
+  // set txd (pa1) as input or disconnect
   /*
+  PORTA.DIRCLR = PIN1_bm;
   set_sleep_mode(SLEEP_MODE_STANDBY);
   sleep_enable();
   sleep_cpu();
+  DL("sleep");
   */
 
   PORTB.DIRSET = PIN5_bm; // set PB5 (led) as output
