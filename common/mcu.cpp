@@ -9,7 +9,7 @@ void mcu_init() {
 
   // use external crystal as clock (for RTC). Run in standby
   _PROTECTED_WRITE(CLKCTRL.XOSC32KCTRLA, CLKCTRL_ENABLE_bm | CLKCTRL_RUNSTDBY_bm);
-  while(CLKCTRL.MCLKSTATUS & CLKCTRL_XOSC32KS_bm);
+  while (CLKCTRL.MCLKSTATUS & CLKCTRL_XOSC32KS_bm);
 
   // set alternative pins for uart and spi
   PORTMUX.CTRLB = PORTMUX_USART0_ALTERNATE_gc | PORTMUX_SPI0_ALTERNATE_gc;
