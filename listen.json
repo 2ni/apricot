@@ -1,0 +1,62 @@
+{
+  'app_id': 'forgetmenot',
+  'dev_id': 'evaluation-board-otaa',
+  'hardware_serial': '009933F1777D1690',
+  'port': 1,
+  'counter': 2,
+    'payload_raw': 'gACAAATE',
+    'payload_fields': {
+      'hum': '327.68',
+      'lux': 1220,
+      'temp': '327.68'
+    },
+    'metadata': {
+      'time': '2021-02-13T11:29:03.249503996Z',
+      'frequency': 867.1,
+      'modulation': 'LORA',
+      'data_rate': 'SF7BW125',
+      'airtime': 51456000,
+      'coding_rate': '4/5',
+      'gateways': [
+        {
+          'gtw_id': 'eui-b827ebfffe162cc4',
+          'timestamp': 105951115,
+          'time': '2021-02-13T11:29:03.229121Z',
+          'channel': 3,
+          'rssi': -112,
+          'snr': -7,
+          'rf_chain': 0,
+          'latitude': 47.374,
+          'longitude': 8.548,
+          'altitude': 443
+        }, {
+          'gtw_id': 'eui-b827ebfffe4e1ce7',
+          'timestamp': 1427090427,
+          'time': '2021-02-13T11:29:03.233334Z',
+          'channel': 3,
+          'rssi': -115,
+          'snr': -3.5,
+          'rf_chain': 0,
+          'latitude': 47.359,
+          'longitude': 8.56,
+          'altitude': 453
+        }, {
+          'gtw_id': 'eui-58a0cbfffe01bc78',
+          'timestamp': 2299751259,
+          'time': '',
+          'channel': 1,
+          'rssi': -101,
+          'snr': -1.5,
+          'rf_chain': 0
+        }, {
+          'gtw_id': 'eui-58a0cbfffe01bc78',
+          'timestamp': 2299751259,
+          'time': '',
+          'channel': 3,
+          'rssi': -59,
+          'snr': 3,
+          'rf_chain': 0
+        }
+      ]
+    }
+}
