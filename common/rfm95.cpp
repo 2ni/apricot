@@ -47,6 +47,9 @@ uint8_t RFM95::init() {
   pins_output(cs, 1); // set as output
   pins_set(cs, 1);    // set high (spi bus disabled by default)
 
+  // spi communication should only start after 10ms (p.108)
+  sleep_ms(10);
+
   // pins_output(dio0, 0); // input, DIO0
   // pins_output(dio1, 0); // input, DIO1
 
@@ -57,12 +60,22 @@ uint8_t RFM95::init() {
   }
 
   // sleep to switch to lora mode
-  write_reg(0x01, 0x00 | 0x80);
+  write_reg(0x01, 0x00);
   sleep_ms(1);
+  write_reg(0x01, 0x80);
+  sleep_ms(1);
+
   // ensure we successfully switched to lora
   if (read_reg(0x01) != 0x80) {
     return 0;
   }
+
+  // set IQ (documented in AN1200.24)
+  write_reg(0x33, 0x27);
+  write_reg(0x3B, 0x1D);
+
+  // set max packet len to 65 (documented in AN1200.24)
+  write_reg(0x23, 0x40);
 
   // set fifo pointers
   // tx base address
@@ -71,7 +84,7 @@ uint8_t RFM95::init() {
   write_reg(0x0F, 0x00);
 
   // rx timeout set to 37 symbols
-  write_reg(0x1F, 0x25);
+  write_reg(0x1F, 0x25); // according to AN1200.24: 0x05 if sf>10 else 0x08
 
   // preamble length set to 8 symbols
   // 0x0008 + 4 = 12
@@ -90,12 +103,9 @@ uint8_t RFM95::init() {
   // disable current protection
   // write_reg(0x0b, 0);
 
-  setpower(12);
+  set_power(12);
   // DF("regpaconfig: 0x%02x\n", read_reg(0x09));
 
-  // for some weird reasons it sometimes is in sleep mode with 1.5mA consumption
-  // if we don't set it in another mode 1st
-  set_mode(6);
   set_mode(0); // sleep
 
   // DT_IH("reg", read_reg(0x01));
@@ -139,6 +149,10 @@ void RFM95::write_reg(uint8_t addr, uint8_t value) {
  *
  */
 void RFM95::receive_continuous(uint8_t channel, uint8_t datarate) {
+  // set iq (documented in AN1200.24
+  write_reg(0x33, 0x67);
+  write_reg(0x3B, 0x19);
+
   set_mode(1); // standby
 
   // set downlink carrier frq
@@ -163,7 +177,15 @@ void RFM95::receive_continuous(uint8_t channel, uint8_t datarate) {
  * 1: timeout
  */
 Status RFM95::wait_for_single_package(uint8_t channel, uint8_t datarate) {
-  // write_reg(0x40, 0x00); // DIO0 -> rxdone
+  set_mode(1);
+
+  write_reg(0x40, 0x00); // DIO0 -> rxdone
+
+  // set iq (documented in AN1200.24)
+  write_reg(0x33, 0x67);
+  write_reg(0x3B, 0x19);
+
+  write_reg(0x0c, 0x23); // AN1200.24
 
   // set downlink carrier frq
   set_channel(channel);
@@ -179,10 +201,15 @@ Status RFM95::wait_for_single_package(uint8_t channel, uint8_t datarate) {
       break;
     }
   }
-  // DF("reg: 0x%02x\n", f);
+  // DT_IH("reg", f);
 
   write_reg(0x12, 0xff); // clear interrupt
-  return (f & 0x80) ? TIMEOUT : OK;
+  if (f & 0x80) {
+    set_mode(0);
+    return TIMEOUT;
+  } else {
+    return OK;
+  }
 }
 
 /*
@@ -223,15 +250,18 @@ Status RFM95::read(Packet *packet) {
 void RFM95::send(const Packet *packet, const uint8_t channel, const uint8_t datarate) {
   set_mode(1); // standby
 
-  // switch DIO0 to TxDone
-  // 0x40: RegDioMapping1, bits 7, 6
-  // 00: rxdone
-  // 01: txdone
-  // write_reg(0x40, 0x40);
+  write_reg(0x40, 0x40); // DIO0 -> txdone
+
+  // iq to standard values according to AN1200.24
+  write_reg(0x33, 0x27);
+  write_reg(0x3B, 0x1D);
+
+  write_reg(0x0a, 0x08); // 50us PA ramp-up time (documented in AN1200.24)
 
   set_channel(channel); // eg 4 868.1MHz
   set_datarate(datarate); // eg 12 for SF12
 
+  write_reg(0x12, 0xff); // clear interrupt
   write_reg(0x22, packet->len); // set length
 
   uint8_t tx_pos = read_reg(0x0E);
@@ -245,9 +275,14 @@ void RFM95::send(const Packet *packet, const uint8_t channel, const uint8_t data
 
   // DL("rfm95 sending...");
   if (set_mode(3) == 0) { // tx
-    while (!(read_reg(0x12) & 0x08)) { }
+    while (!(read_reg(0x12) & 0x08)) {
+      // DF("irqflags: 0x%02x, status: %u\n", read_reg(0x12), read_reg(0x01) & 0x07);
+    }
     //while(pins_get(dio0) == 0) {} // wait for txdone
+  } else {
+    DL(NOK("set tx mode failed"));
   }
+  // DF("irqflags: 0x%02x, status: %u\n", read_reg(0x12), read_reg(0x01) & 0x07);
   // DL("done");
 
   write_reg(0x12, 0xff); // clear interrupt
@@ -269,9 +304,13 @@ void RFM95::send(const Packet *packet, const uint8_t channel, const uint8_t data
  * 7 = channel activity detection
  */
 uint8_t RFM95::set_mode(uint8_t mode) {
-  write_reg(0x01, (read_reg(0x01) & ~0x07) | mode);
+  // write_reg(0x01, (read_reg(0x01) & ~0x07) | mode);
+  write_reg(0x01, 0x80 | mode);
   // wait for mode switched
-  while ((read_reg(0x01) & 0x07) != mode) {};
+  while ((read_reg(0x01) & 0x07) != mode) {
+    _delay_us(1);
+  };
+  _delay_us(100);
   return 0;
 
   // TODO might need to have a fallback for 0x03 (tx) which can hang sometimes
@@ -303,9 +342,10 @@ uint8_t RFM95::set_mode(uint8_t mode) {
  * based on
  * - https://github.com/adafruit/RadioHead/blob/master/RH_RF95.cpp#L392
  * - https://github.com/dragino/RadioHead/blob/master/RH_RF95.cpp#L367
+ * - https://github.com/Lora-net/LoRaMac-node
  *
  */
-void RFM95::setpower(int8_t power) {
+void RFM95::set_power(int8_t power) {
   if (power > 20) power = 20;
   if (power < 2) power = 2;
 

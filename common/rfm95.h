@@ -19,7 +19,7 @@ class RFM95 {
     Status   wait_for_single_package(uint8_t channel, uint8_t datarate);
     Status   read(Packet *packet);
     uint8_t  set_mode(uint8_t mode);
-    void     setpower(int8_t power);
+    void     set_power(int8_t power);
     uint32_t get_random(uint8_t bits=32);
     void     set_datarate(uint8_t rate);
     void     set_channel(uint8_t channel);
