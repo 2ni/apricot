@@ -8,7 +8,7 @@ COMMONDIR  = ../common
 COMMON     = pins.cpp cmac.cpp aes.cpp lorawan.cpp rfm95.cpp
 MOCKS      = ./mocks
 
-FLAGS      = -std=c++11
+FLAGS      = -DDEBUG -std=c++11 -Wno-format # ignore lu warnings as different sizes
 CPPFLAGS   =
 
 CFLAGS     = -DF_CPU=$(CLK) $(FLAGS) -I $(MOCKS) -I $(COMMONDIR)

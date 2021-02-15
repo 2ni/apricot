@@ -6,8 +6,6 @@
 #include <util/delay.h>
 #include "uart.h"
 
-#define PSTR
-
 /*
  * setup uart and tx pin
  */
