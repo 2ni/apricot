@@ -32,7 +32,11 @@ void mcu_init() {
  */
 uint16_t get_vin() {
   pins_vin.port_adc->CTRLC = ADC_PRESC_DIV128_gc | ADC_REFSEL_INTREF_gc | (0<<ADC_SAMPCAP_bp);
-  VREF.CTRLC = VREF_ADC1REFSEL_1V1_gc;
+  if  (pins_vin.port_adc == &ADC0) {
+    VREF.CTRLA = VREF_ADC1REFSEL_1V1_gc; // ADC0 refers to VREF.CTRLA
+  } else {
+    VREF.CTRLC = VREF_ADC1REFSEL_1V1_gc; // ADC1 refers to VREF.CTRLC
+  }
 
   uint16_t adc = pins_getadc(&pins_vin);
   // (vref * (r1+r2) * precision * adc) / (r2 * adc_precision)

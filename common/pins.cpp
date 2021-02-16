@@ -101,7 +101,7 @@ void pins_flash(pins_t *pin, uint8_t num, uint8_t duration) {
  * 10bit resolution
  */
 uint16_t pins_getadc(pins_t *pin) {
-  pins_output(pin, 0);
+  pins_output(pin, 0); // set input
   (*pin).port_adc->MUXPOS = ((ADC_MUXPOS_AIN0_gc + (*pin).pin_adc) << 0);
 
   (*pin).port_adc->CTRLA = (1<<ADC_ENABLE_bp) | (0<<ADC_FREERUN_bp) | ADC_RESSEL_10BIT_gc;
@@ -109,6 +109,8 @@ uint16_t pins_getadc(pins_t *pin) {
   while (pins_adc_isrunning(pin));
 
   (*pin).port_adc->CTRLA = 0;
+
+  (*pin).port_adc->INTFLAGS = ADC_RESRDY_bm; // clear interrupt
 
   return (*pin).port_adc->RES;
 }
