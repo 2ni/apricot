@@ -1,6 +1,7 @@
 #include "mcu.h"
 #include "pins.h"
 #include "uart.h"
+#include "sleep.h"
 
 
 void mcu_init() {
@@ -38,10 +39,15 @@ uint16_t get_vin() {
     VREF.CTRLC = VREF_ADC1REFSEL_1V1_gc; // ADC1 refers to VREF.CTRLC
   }
 
-  uint16_t adc = pins_getadc(&pins_vin);
+  uint16_t adc = 0;
+  for (uint8_t i=0; i<4; i++) {
+    adc += (134200*pins_getadc(&pins_vin))/225280;
+  }
+  return adc/4;
+
   // (vref * (r1+r2) * precision * adc) / (r2 * adc_precision)
   // (1.5*1220*100*adc) / (220*1024)
-  return (134200*adc)/225280; // 1.1v reference
+  // return (134200*adc)/225280; // 1.1v reference
   // return (183000*adc)/225280; // 1.5v reference
 }
 
