@@ -53,13 +53,14 @@ def on_message(mqttc, obj, msg):
             gws_data=gws_data,
             my_rssi=my_rssi
         ))
+        sys.stdout.flush()
 
     except Exception as e:
         print(e)
         pass
 
 
-def on_publis(mosq, obj, mid):
+def on_publish(mosq, obj, mid):
     print("mid: " + str(mid))
 
 
