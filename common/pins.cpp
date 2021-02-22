@@ -35,12 +35,33 @@ pins_t pins_dio1 = PC5;
 /*
  * disable digital input buffer on all pins
  * to save power
+ * single
  */
-void pins_disable_buffer() {
-  for (uint8_t pin = 0; pin < 8; pin++) {
-    (&PORTA.PIN0CTRL)[pin] = PORT_ISC_INPUT_DISABLE_gc;
-    (&PORTB.PIN0CTRL)[pin] = PORT_ISC_INPUT_DISABLE_gc;
-    (&PORTC.PIN0CTRL)[pin] = PORT_ISC_INPUT_DISABLE_gc;
+void pins_disable_buffer(pins_t *pin) {
+  if (pin == 0) {
+    for (uint8_t pin = 0; pin < 8; pin++) {
+      (&PORTA.PIN0CTRL)[pin] = PORT_ISC_INPUT_DISABLE_gc;
+      (&PORTB.PIN0CTRL)[pin] = PORT_ISC_INPUT_DISABLE_gc;
+      (&PORTC.PIN0CTRL)[pin] = PORT_ISC_INPUT_DISABLE_gc;
+    }
+  } else {
+    register8_t *pctrl = &(*pin).port->PIN0CTRL;
+    pctrl += (*pin).pin;
+    *pctrl = PORT_ISC_INPUT_DISABLE_gc;
+  }
+}
+
+void pins_enable_buffer(pins_t *pin) {
+  if (pin == 0) {
+    for (uint8_t pin = 0; pin < 8; pin++) {
+      (&PORTA.PIN0CTRL)[pin] = PORT_ISC_INTDISABLE_gc;
+      (&PORTB.PIN0CTRL)[pin] = PORT_ISC_INTDISABLE_gc;
+      (&PORTC.PIN0CTRL)[pin] = PORT_ISC_INTDISABLE_gc;
+    }
+  } else {
+    register8_t *pctrl = &(*pin).port->PIN0CTRL;
+    pctrl += (*pin).pin;
+    *pctrl = PORT_ISC_INTDISABLE_gc;
   }
 }
 

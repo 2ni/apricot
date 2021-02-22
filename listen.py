@@ -32,7 +32,8 @@ def on_message(mqttc, obj, msg):
         devid = x["dev_id"]
         counter = x["counter"]
         gateways = x["metadata"]["gateways"]
-        gws_data = [(x['rssi'], x['latitude'], x['longitude']) for x in gateways if 'latitude' in x]
+        gws_with_pos = [(x['rssi'], x['latitude'], x['longitude'], x['time']) for x in gateways if 'latitude' in x]
+        gws_with_pos_time = [(x['rssi'], x['latitude'], x['longitude'], x['time']) for x in gateways if 'latitude' in x and x['time']]
         timestamp = parse(x["metadata"]["time"]).replace(tzinfo=timezone.utc).astimezone(tz=None)
         timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
         data = str("%s" % x["payload_fields"])
@@ -41,7 +42,7 @@ def on_message(mqttc, obj, msg):
             if gw["gtw_id"] == "eui-58a0cbfffe01bc78":
                 my_rssi = gw["rssi"]
 
-        print("{timestamp}: ({devid}:{counter},{datarate}|{frq}|{my_rssi}) {data} | gws ({no_gws_pos}/{no_gws}): {gws_data}".format(
+        print("{timestamp}: ({devid}:{counter},{datarate}|{frq}|{my_rssi}) {data} | gws ({no_gws_pos_time}/{no_gws_pos}/{no_gws}): {gws_with_pos}".format(
             timestamp=timestamp_str,
             devid=devid,
             counter=counter,
@@ -49,8 +50,9 @@ def on_message(mqttc, obj, msg):
             frq=x["metadata"]["frequency"],
             data=data,
             no_gws=len(gateways),
-            no_gws_pos=len(gws_data),
-            gws_data=gws_data,
+            no_gws_pos=len(gws_with_pos),
+            no_gws_pos_time=len(gws_with_pos_time),
+            gws_with_pos=gws_with_pos,
             my_rssi=my_rssi
         ))
         sys.stdout.flush()

@@ -18,13 +18,17 @@ void spi_init(uint8_t mode) {
 */
 
   // SS probably doesn't need to be set as output to avoid spi going highwire, see SPI_SSD_bm
+  /*
   pins_output(&pins_mosi, 1); // mosi as output
   pins_output(&pins_sck, 1);  // sck as output
   pins_output(&pins_miso, 0); // miso as input
+  */
+  PORTC.DIRSET = PIN0_bm | PIN2_bm;
+  PORTC.DIRCLR = PIN1_bm;
 
-  SPI0.CTRLB = SPI_SSD_bm | mode; // ignore SS pin setting for master, set spi mode 0
+  SPI0.CTRLB = SPI_BUFEN_bm | SPI_BUFWR_bm | SPI_SSD_bm | mode; // ignore SS pin setting for master, set spi mode 0
 
-  SPI0.CTRLA = (0<<SPI_DORD_bp) | SPI_ENABLE_bm | SPI_MASTER_bm | SPI_PRESC_DIV4_gc; // MSB first, master mode, enable spi, no double clk, prescaler
+  SPI0.CTRLA = SPI_ENABLE_bm | SPI_MASTER_bm | SPI_PRESC_DIV4_gc; // MSB first, master mode, enable spi, no double clk, prescaler
   SPI0.DATA; // empty rx
 }
 
@@ -57,6 +61,7 @@ void spi_send (uint8_t *dataout, uint8_t len) {
 uint8_t spi_transfer_byte (uint8_t data) {
   SPI0.DATA = data;
 
-  while (!(SPI0.INTFLAGS & SPI_IF_bm));
+  while (!(SPI0.INTFLAGS & SPI_TXCIF_bm));
+  SPI0.INTFLAGS |= SPI_TXCIF_bm; // clear flag
   return SPI0.DATA;
 }

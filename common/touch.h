@@ -10,7 +10,7 @@
 #define touch_is_pressed_bm 0x80
 #define touch_short_bm      0x01
 #define touch_long_bm       0x02
-#define touch_verylong_bm   0x03
+#define touch_verylong_bm   0x04
 
 class TOUCH {
   public:

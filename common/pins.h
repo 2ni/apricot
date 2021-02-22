@@ -15,7 +15,8 @@ extern pins_t PB0, PB1, PB4, PB5, PB6, PB7, pins_scl, pins_sda, pins_vin, pins_l
 extern pins_t PC0, PC1, PC2, PC3, PC4, PC5, pins_sck, pins_miso, pins_mosi;
 extern pins_t pins_csrfm, pins_dio0, pins_dio1;
 
-void     pins_disable_buffer();
+void     pins_disable_buffer(pins_t *pin=0);
+void     pins_enable_buffer(pins_t *pin=0);
 void     pins_output(pins_t *pin, uint8_t value);
 void     pins_set(pins_t *pin, uint8_t value);
 void     pins_toggle(pins_t *pin);
