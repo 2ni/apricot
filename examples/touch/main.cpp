@@ -52,7 +52,7 @@ int main(void) {
     // do not sleep if pressed, as we need to measure time for short/long touch (which is on hold if sleeping)
     if (!is_pressed) {
       pins_disable_buffer(&pins_led);
-      _sleep(SLEEP_PER, 5); // 1638 (precalculated) vs 1650 using sleep_ms(50);
+      _sleep(SLEEP_PER, 5);
       pins_enable_buffer(&pins_led);
     }
   }
