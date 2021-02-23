@@ -19,3 +19,4 @@ iotn3217.h
 *.backup
 credentials.py
 LoRaMac-node
+keys.h
