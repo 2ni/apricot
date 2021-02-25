@@ -14,9 +14,9 @@ class RFM95 {
     void     unselect();
     uint8_t  read_reg(uint8_t addr);
     void     write_reg(uint8_t addr, uint8_t data);
-    void     send(const Packet *packet, const uint8_t channel, const uint8_t datarate);
-    void     receive_continuous(uint8_t channel, uint8_t datarate);
-    Status   wait_for_single_package(uint8_t channel, uint8_t datarate);
+    void     send(const Packet *packet, const uint32_t frq, const uint8_t datarate, const uint8_t power=12);
+    void     receive_continuous(uint32_t frq, uint8_t datarate);
+    Status   wait_for_single_package(uint32_t frq, uint8_t datarate);
     Status   read(Packet *packet);
     uint8_t  set_mode(uint8_t mode);
     void     set_power(int8_t power);
@@ -26,8 +26,8 @@ class RFM95 {
     void     set_frq(uint32_t frq);
 
   private:
-    const uint32_t FREQUENCIES[8] = { 868100, 868300, 868500, 867100, 867300, 867500, 867700, 867900 };
-    const uint32_t FREQUENCY_UP = 869525;
+    const uint32_t FREQUENCIES[8] = { 8681000, 8683000, 8685000, 8671000, 8673000, 8675000, 8677000, 8679000 };
+    const uint32_t FREQUENCY_UP = 8695250;
 
     pins_t *cs, *dio0, *dio1;
 };

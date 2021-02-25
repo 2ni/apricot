@@ -22,9 +22,10 @@ typedef struct {
 } Test_Result;
 
 void printarray(uint8_t *array, uint8_t len);
+void printarray(uint32_t *array, uint8_t len);
 Test_Outcome is_same(Packet *one, Packet *two);
 Test_Outcome validate(const char *name, Packet *expected, Packet *got);
-Test_Outcome validate(const char *name, uint8_t expected, uint8_t got);
+Test_Outcome validate(const char *name, uint16_t expected, uint16_t got);
 void print_test(const char *title, Test_Outcome result);
 Test_Result run_test(Test_Result (*function)());
 

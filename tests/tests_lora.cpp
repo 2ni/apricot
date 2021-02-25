@@ -12,6 +12,7 @@
 #include "cmac.h"
 #include "aes.h"
 #include "lorawan.h"
+#include "uart.h"
 #include "tests_lora.h"
 
 Test_Result tests_lora() {
@@ -28,7 +29,45 @@ Test_Result tests_lora() {
   uint8_t appskey[16] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f };
 
   LORAWAN lora_obj(0, 0); // no adr, no linecheck
+  lora_obj.reset_session(); // set eg frequencies and chmask
   lora_obj.set_abp(devaddr, nwkskey, appskey, counter);
+
+  // chmask frequency position
+  lora_obj.session.chmask = 0b00101101; // pos 0, 2, 3, 5
+  lora_obj.session.frequencies[3] = 8671000;
+  lora_obj.session.frequencies[5] = 8675000;
+  const uint8_t chmask_len = 10;
+  uint8_t chmask_positions[chmask_len];
+  uint8_t chmask_positions_expected[chmask_len] = { 2, 3, 5, 0, 2, 3, 5, 0, 2, 3 };
+  uint32_t frqs[chmask_len];
+  expected.len = chmask_len;
+  expected.data = chmask_positions_expected;
+  for (uint8_t x=0; x<chmask_len; x++) {
+    chmask_positions[x] = lora_obj.get_next_frq_pos();
+    frqs[x] = lora_obj.session.frequencies[chmask_positions[x]];
+  }
+  packet.len = chmask_len;
+  packet.data = chmask_positions;
+  number_of_passed += validate("next frequency position", &expected, &packet);
+  number_of_tests++;
+
+  uint32_t frqs_expected[chmask_len] = {8685000, 8671000, 8675000, 8681000, 8685000, 8671000, 8675000, 8681000, 8685000, 8671000};
+  Test_Outcome test = PASS;
+  for (uint8_t x=0; x<chmask_len; x++) {
+    if (frqs[x] != frqs_expected[x]) {
+      test = FAIL;
+      break;
+    }
+  }
+  print_test("next frequency", test);
+  if (test == FAIL) {
+    printf("   expected: ");
+    printarray(frqs_expected, chmask_len);
+    printf("   got     : ");
+    printarray(frqs, chmask_len);
+  }
+  number_of_passed += test;
+  number_of_tests++;
 
   // cipher (alters packet!)
   const uint8_t lc = 3;
@@ -108,7 +147,6 @@ Test_Result tests_lora() {
   expected.data = &phy.data[l_phy-4];
   expected.len = 4;
   number_of_passed += validate("lora rx data package", &expected, &mic);
-
 
   // summary
   Test_Result result = { .total=number_of_tests, .passed=number_of_passed };

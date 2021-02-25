@@ -9,6 +9,7 @@
 
 #include "tests_lora.h"
 #include "tests_pgmspace.h"
+#include "tests_mac.h"
 
 uint32_t m; // time counter used in lorawan.cpp
 
@@ -18,13 +19,18 @@ int main() {
   Test_Outcome outcome;
   Test_Result test_result;
 
-  // test pgmspace mock
+  // test pgmspace
   test_result = tests_pgmspace();
   number_of_passed += test_result.passed;
   number_of_tests += test_result.total;
 
-  // test B0 appending
+  // test lora
   test_result = tests_lora();
+  number_of_passed += test_result.passed;
+  number_of_tests += test_result.total;
+
+  // test mac commands
+  test_result = tests_mac();
   number_of_passed += test_result.passed;
   number_of_tests += test_result.total;
 

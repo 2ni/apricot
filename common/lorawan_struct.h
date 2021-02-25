@@ -16,15 +16,17 @@ typedef enum {
 } Status;
 
 typedef struct {
-  uint8_t nwkskey[16];
-  uint8_t appskey[16];
-  uint8_t devaddr[4];
+  uint8_t  nwkskey[16];
+  uint8_t  appskey[16];
+  uint8_t  devaddr[4];
   uint16_t counter;
-  uint8_t txdatarate;  // datarate with which we send
-  uint8_t rxdelay;     // delay for 1st rx window in seconds
-  uint8_t rxoffset;    // datarate offset between tx and rx
-  uint8_t rx2datarate; // datarate for 2nd rx window
-  uint8_t txpower;     // power with which we send
+  uint8_t  txdatarate;     // datarate with which we send
+  uint8_t  rxdelay;        // delay for 1st rx window in seconds
+  uint8_t  rxoffset;       // datarate offset between tx and rx
+  uint8_t  rx2datarate;    // datarate for 2nd rx window
+  uint8_t  txpower;        // power with which we send
+  uint16_t chmask;         // which channels can be used 0: channel 1, 1: channel 2,.. 15: channel 16
+  uint32_t frequencies[9]; // frequencies which can be used, rx2 frq is frequencies[8]
 } Lora_session;
 
 typedef struct {

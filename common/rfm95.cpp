@@ -61,9 +61,7 @@ uint8_t RFM95::init() {
 
   // sleep to switch to lora mode
   write_reg(0x01, 0x00);
-  sleep_ms(1);
   write_reg(0x01, 0x80);
-  sleep_ms(1);
 
   // ensure we successfully switched to lora
   if (read_reg(0x01) != 0x80) {
@@ -95,13 +93,13 @@ uint8_t RFM95::init() {
   write_reg(0x39, 0x34);
 
   // set carrier frequency
-  set_channel(0);
+  set_frq(8681000);
 
   // SW12, 125kHz
   set_datarate(12);
 
   // disable current protection
-  // write_reg(0x0b, 0);
+  // write_reg(0x0b, 0x3f);
 
   set_power(12);
   // DF("regpaconfig: 0x%02x\n", read_reg(0x09));
@@ -148,22 +146,21 @@ void RFM95::write_reg(uint8_t addr, uint8_t value) {
  * (directly opening window RX2)
  *
  */
-void RFM95::receive_continuous(uint8_t channel, uint8_t datarate) {
+void RFM95::receive_continuous(uint32_t frq, uint8_t datarate) {
   // set iq (documented in AN1200.24
   write_reg(0x33, 0x67);
   write_reg(0x3B, 0x19);
 
   set_mode(1); // standby
 
-  // set downlink carrier frq
-  set_channel(channel); // eg 99: 869.525MHz
+  set_frq(frq);
   set_datarate(datarate); // eg 12 for SF12. SF9 for "normal", SF12 for join accept in rx2
 
   // set hop frequency period to 0
   write_reg(0x24, 0x00);
 
   set_mode(5); // continuous rx
-  DF("listening on ch%u SF%u\n", channel, datarate);
+  DF("listening on %lu SF%u\n", frq, datarate);
 }
 
 /*
@@ -176,7 +173,7 @@ void RFM95::receive_continuous(uint8_t channel, uint8_t datarate) {
  * 0: no errors (no timeout)
  * 1: timeout
  */
-Status RFM95::wait_for_single_package(uint8_t channel, uint8_t datarate) {
+Status RFM95::wait_for_single_package(uint32_t frq, uint8_t datarate) {
   set_mode(1);
 
   write_reg(0x40, 0x00); // DIO0 -> rxdone
@@ -188,7 +185,7 @@ Status RFM95::wait_for_single_package(uint8_t channel, uint8_t datarate) {
   write_reg(0x0c, 0x23); // AN1200.24
 
   // set downlink carrier frq
-  set_channel(channel);
+  set_frq(frq);
   set_datarate(datarate);
 
   set_mode(6); // single rx
@@ -242,12 +239,14 @@ Status RFM95::read(Packet *packet) {
 
 /*
  * TODO
+ * fallback if tx timeout: https://github.com/Lora-net/LoRaMac-node/blob/develop/src/radio/sx1276/sx1276.c#L1564
+ *
  * improvements (from the comments):
  * if you would like to use a semi-random key to select the channel,
  * just take a byte from the encrypted payload (or a byte from the MIC)
  * and mask-out the 3 least significant bits as a pointer to the channel
  */
-void RFM95::send(const Packet *packet, const uint8_t channel, const uint8_t datarate) {
+void RFM95::send(const Packet *packet, const uint32_t frq, const uint8_t datarate, const uint8_t power) {
   set_mode(1); // standby
 
   write_reg(0x40, 0x40); // DIO0 -> txdone
@@ -258,7 +257,8 @@ void RFM95::send(const Packet *packet, const uint8_t channel, const uint8_t data
 
   write_reg(0x0a, 0x08); // 50us PA ramp-up time (documented in AN1200.24)
 
-  set_channel(channel); // eg 4 868.1MHz
+  set_power(power);
+  set_frq(frq);
   set_datarate(datarate); // eg 12 for SF12
 
   write_reg(0x12, 0xff); // clear interrupt
@@ -310,7 +310,6 @@ uint8_t RFM95::set_mode(uint8_t mode) {
   while ((read_reg(0x01) & 0x07) != mode) {
     _delay_us(1);
   };
-  _delay_us(100);
   return 0;
 
   // TODO might need to have a fallback for 0x03 (tx) which can hang sometimes
@@ -432,17 +431,17 @@ void RFM95::set_datarate(uint8_t rate) {
 /*
  * set frequency of transmitter
  * in kHz to spare some 0's
- * registers = frq*2^19/32MHz
+ * registers = frq*2^19/32MHz = frq * 0.016384 = frq / 61.03515625
  *
- * eg 868100 or 869525
+ * eg 8681000 or 8695250
  */
 void RFM95::set_frq(uint32_t frq) {
-    uint32_t frf = (uint64_t)frq*524288/32000;
-    // DF("frf: 0x%lx\n", frf);
-    // DF("frq: %lu\n", frq);
-    write_reg(0x06, (uint8_t)(frf>>16));
-    write_reg(0x07, (uint8_t)(frf>>8));
-    write_reg(0x08, (uint8_t)(frf>>0));
+  uint32_t frf = (uint64_t)frq*524288/320000;
+  // DF("frf: 0x%lx\n", frf);
+  // DF("frq: %lu\n", frq);
+  write_reg(0x06, (uint8_t)(frf>>16) & 0xff);
+  write_reg(0x07, (uint8_t)(frf>>8) & 0xff);
+  write_reg(0x08, (uint8_t)(frf>>0));
 }
 
 /*
