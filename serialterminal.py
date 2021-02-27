@@ -72,9 +72,9 @@ try:
                     # print('{}: '.format(now.strftime("%H:%M:%S.%f")[:-5]), end='')
                 else:
                     secondsSinceLast = (now - last).total_seconds()
-                    diff = ' +{s:03d}.{ms:03d}'.format(
+                    diff = ' +{s:03d}.{ms:04d}'.format(
                         s=int(secondsSinceLast),
-                        ms=round((secondsSinceLast - int(secondsSinceLast)) * 1000)
+                        ms=round((secondsSinceLast - int(secondsSinceLast)) * 10000)
                     )
                     last = now
 

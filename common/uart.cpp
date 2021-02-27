@@ -11,8 +11,8 @@
 #include <avr/pgmspace.h>
 #include <stdint.h>
 #include <avr/io.h>
+#include <util/delay.h>
 #include "uart.h"
-#include "sleep.h"
 
 /*
  * setup uart and tx pin
@@ -21,7 +21,7 @@ void uart_init(void) {
   USART0.BAUD = (uint16_t)USART_BAUD_RATE(USART_BPS);
   USART0.CTRLB |= USART_TXEN_bm;  // enable TX for now
   USART_PORT.DIRSET = USART_TX;
-  sleep_ms(100);
+  _delay_ms(100);
 
   // see https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences for colors
   DF("\033[1;38;5;18;48;5;226m Hello from 0x%06lX \033[0m\n", get_deviceid());

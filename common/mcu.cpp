@@ -15,6 +15,9 @@ void mcu_init() {
   // set alternative pins for uart and spi
   PORTMUX.CTRLB = PORTMUX_USART0_ALTERNATE_gc | PORTMUX_SPI0_ALTERNATE_gc;
 
+  // sleep command puts mcu in standby (idle, standby, power down)
+  SLPCTRL.CTRLA = (SLPCTRL_SMODE_STDBY_gc | SLPCTRL_SEN_bm);
+
   // init uart for debugging
   uart_init();
 

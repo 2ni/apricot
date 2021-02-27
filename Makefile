@@ -27,6 +27,7 @@ EFU        = 0xFF
 SRC        = ./src
 EXT        =
 COMMON     = ./common
+EXCLUDE    = sleep.cpp
 
 FLAGS      = -DDEBUG -std=c++11 # avoid warning "non-static data member initializers"
 CPPFLAGS   =
@@ -59,7 +60,7 @@ CC         = $(BIN)avr-gcc
 CFILES    := $(foreach dir, $(COMMON) $(SRC), $(wildcard $(dir)/*.c))
 EXTC      := $(foreach dir, $(EXT), $(wildcard $(dir)/*.c))
 # CPPFILES   = $(wildcard $(SRC)/*.cpp)
-CPPFILES  := $(foreach dir, $(COMMON) $(SRC), $(wildcard $(dir)/*.cpp))
+CPPFILES  := $(foreach dir, $(COMMON) $(SRC), $(filter-out $(foreach file, $(EXCLUDE), $(dir)/$(file)), $(wildcard $(dir)/*.cpp)))
 EXTCPP    := $(foreach dir, $(EXT), $(wildcard $(dir)/*.cpp))
 OBJ        = $(CFILES:.c=.c.o) $(EXTC:.c=.c.o) $(CPPFILES:.cpp=.cpp.o) $(EXTCPP:.cpp=.cpp.o)
 DEPENDS   := $(CFILES:.c=.d) $(EXTC:.c=.d) $(CPPFILES:.cpp=.cpp.d) $(EXTCPP:.cpp=.cpp.d)

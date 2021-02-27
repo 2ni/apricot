@@ -1,5 +1,5 @@
+#include <util/delay.h>
 #include "pins.h"
-#include "sleep.h"
 pins_t PA1 = { .port = &PORTA, .pin = 1, .port_adc = &ADC0, .pin_adc = 1 };  // TXD (reserved for uart)
 pins_t PA2 = { .port = &PORTA, .pin = 2, .port_adc = &ADC0, .pin_adc = 2 };  // RXD (reserved for uart)
 pins_t PA3 = { .port = &PORTA, .pin = 3, .port_adc = &ADC0, .pin_adc = 3 };
@@ -111,9 +111,9 @@ void pins_flash(pins_t *pin, uint8_t num, uint8_t duration) {
   pins_output(pin, 1);
   for (uint8_t c=0; c<num; c++) {
     pins_set(pin, 1);
-    sleep_ms(20);
+    _delay_ms(20); // TOOD replace with SLEEP pointer to sleep->is_continuous and use appropriate sleep function
     pins_set(pin, 0);
-    if (c != num-1) sleep_ms(100);
+    if (c != num-1) _delay_ms(100);
   }
 }
 

@@ -31,7 +31,6 @@
 
 #include "rfm95.h"
 #include "spi.h"
-#include "sleep.h"
 #include "pins.h"
 #include "uart.h"
 
@@ -48,7 +47,7 @@ uint8_t RFM95::init() {
   pins_set(cs, 1);    // set high (spi bus disabled by default)
 
   // spi communication should only start after 10ms (p.108)
-  sleep_ms(10);
+  _delay_ms(10); // replace with calls to function from pointer to  SLEEP
 
   // pins_output(dio0, 0); // input, DIO0
   // pins_output(dio1, 0); // input, DIO1
@@ -311,27 +310,6 @@ uint8_t RFM95::set_mode(uint8_t mode) {
     _delay_us(1);
   };
   return 0;
-
-  // TODO might need to have a fallback for 0x03 (tx) which can hang sometimes
-  /*
-  if ((read_reg(0x01) & 0x07) != mode) {
-    // attempt to reset device
-    DF(NOK("mode switch failed: %03x -> %03x") "\n", read_reg(0x01) & 0x07, mode);
-    write_reg(0x01, 0x00);
-    sleep_ms(1);
-    write_reg(0x01, 0x80);
-    sleep_ms(1);
-    uint8_t i=0;
-    while (i<20) {
-      write_reg(0x01, 0x80 | mode);
-      sleep_ms(10);
-      if ((read_reg(0x01) & 0x07) != mode) break;
-      i++;
-    }
-    return 1;
-  }
-  return 0;
-  */
 }
 
 /*
