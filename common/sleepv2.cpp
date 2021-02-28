@@ -5,6 +5,8 @@
 SLEEP* SLEEP::sleep_ptr;
 
 ISR(RTC_CNT_vect) {
+  // PORTA.OUTSET = PIN7_bm;
+  // PORTA.OUTCLR = PIN7_bm;
   RTC.INTFLAGS = RTC_OVF_bm;
   SLEEP::sleep_ptr->current_tick++;
 }
@@ -22,10 +24,11 @@ SLEEP::SLEEP() {
  * ticks:  <ms>*32768/1000/(RTC.PER+1);
  * ms   : (RTC.PER+1)/32768*1000*<ticks>
  *
- * 31 -> 32: 32768/32 = 1024Hz   = 0.9765625ms (1024 ticks/sec)  -> 6uA
- * 33 -> 34: 32768/34 = 963.8Hz  = 1.037ms                       -> 5.9uA
- * 17 -> 18: 32768/18 = 1820.4Hz = 0.549316msa                   -> 10uA
- * 7  ->  8: 32768/8  = 4096Hz   = 244.140625us (4096 ticks/sec) -> 22uA (high: 1.7uA, low: 242uA)
+ * 32767 -> 1024:  32768/32768 = 1Hz      = 1s                            -> 1uA
+ * 31    -> 32   : 32768/32    = 1024Hz   = 0.9765625ms (1024 ticks/sec)  -> 6uA
+ * 33    -> 34   : 32768/34    = 963.8Hz  = 1.037ms                       -> 5.9uA
+ * 17    -> 18   : 32768/18    = 1820.4Hz = 0.549316msa                   -> 10uA
+ * 7     ->  8   : 32768/8     = 4096Hz   = 244.140625us (4096 ticks/sec) -> 22uA (high: 1.7us, low: 242us)
  *
  * max duration for current_tick: 2^16 * (RTC.PER+1)/32768
  *     uint16_t  uint32_t
@@ -33,18 +36,17 @@ SLEEP::SLEEP() {
  * 31: 64sec     48d 13h 05m 04s
  *
  */
-void SLEEP::init() {
+void SLEEP::init(uint16_t per) {
   current_tick = 0;
-  uint8_t prescaler = 0;
 
   stop();
   while (RTC.STATUS >0);
 
-  RTC.PER = 7;
+  RTC.PER = per;
   RTC.CLKSEL = RTC_CLKSEL_TOSC32K_gc; // external 32.768kHz
   RTC.INTCTRL =  RTC_OVF_bm;
   RTC.CNT = 0;
-  RTC.CTRLA = (prescaler<<3) | RTC_RTCEN_bm | RTC_RUNSTDBY_bm;
+  RTC.CTRLA = RTC_PRESCALER_DIV1_gc | RTC_RTCEN_bm | RTC_RUNSTDBY_bm;
   _is_running = 1;
   sei();
 }
@@ -83,8 +85,12 @@ void SLEEP::sleep_for(uint32_t ticks) {
  * SLEEP sleep
  * #define TICKS_SLEEP <ms>*32768/1000/(RTC.PER+1)
  */
-uint16_t SLEEP::ms2ticks(uint32_t ms) {
+uint32_t SLEEP::ms2ticks(uint32_t ms) {
   return ms * 32768/1000/(RTC.PER+1);
+}
+
+uint32_t SLEEP::ticks2ms(uint32_t ticks) {
+  return (ticks * (RTC.PER+1)*1000)/32768;
 }
 
 /*
