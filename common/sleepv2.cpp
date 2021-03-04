@@ -22,7 +22,7 @@ SLEEP::SLEEP() {
  * RTC.PER configuration
  *
  * ticks:  <ms>*32768/1000/(RTC.PER+1);
- * ms   : (RTC.PER+1)/32768*1000*<ticks>
+ * ms   : <ticks>*(RTC.PER+1)/32768*1000
  *
  * 32767 -> 1024:  32768/32768 = 1Hz      = 1s                            -> 1uA
  * 31    -> 32   : 32768/32    = 1024Hz   = 0.9765625ms (1024 ticks/sec)  -> 6uA

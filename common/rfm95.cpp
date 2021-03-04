@@ -33,6 +33,7 @@
 #include "spi.h"
 #include "pins.h"
 #include "uart.h"
+#include "mcu.h"
 
 // RFM95::RFM95(pins_t *ics, pins_t *idio0, pins_t *idio1) {
 RFM95::RFM95(pins_t *ics) {
@@ -245,7 +246,7 @@ Status RFM95::read(Packet *packet) {
  * just take a byte from the encrypted payload (or a byte from the MIC)
  * and mask-out the 3 least significant bits as a pointer to the channel
  */
-void RFM95::send(const Packet *packet, const uint32_t frq, const uint8_t datarate, const uint8_t power) {
+void RFM95::send(const Packet *packet, const uint32_t frq, const uint8_t datarate, const uint8_t power, uint32_t *tx_tick) {
   set_mode(1); // standby
 
   write_reg(0x40, 0x40); // DIO0 -> txdone
@@ -277,7 +278,8 @@ void RFM95::send(const Packet *packet, const uint32_t frq, const uint8_t datarat
     while (!(read_reg(0x12) & 0x08)) {
       // DF("irqflags: 0x%02x, status: %u\n", read_reg(0x12), read_reg(0x01) & 0x07);
     }
-    //while(pins_get(dio0) == 0) {} // wait for txdone
+    PORTA.OUTSET = PIN7_bm;
+    if (tx_tick) *tx_tick = sleep.current_tick;
   } else {
     DL(NOK("set tx mode failed"));
   }

@@ -14,21 +14,28 @@
 
 class TOUCH {
   public:
-    TOUCH(pins_t *pin, uint16_t threshold_low = 15, uint16_t threshold_high = 30, uint16_t threshold = 0);
+    typedef enum {
+      NONE = 0x00,
+      SHORT = 0x01,
+      LONG = 0x02,
+      VERYLONG = 0x04
+    } Press_type;
+
+    TOUCH(pins_t *pin, uint16_t threshold_low = 10, uint16_t threshold_high = 50);
     uint16_t get_data();
-    uint8_t was_pressed();
     uint16_t get_avg();
-    uint8_t is_pressed(pins_t *led = 0);
+    uint8_t is_pressed(void (*fn)(Press_type, uint32_t) = 0, pins_t *led = &pins_led);
 
   private:
-    void set_thresholds(uint16_t threshold_low, uint16_t threshold_high, uint16_t threshold = 0);
+    void set_thresholds(uint16_t threshold_low, uint16_t threshold_high);
     pins_t *pin;
-    uint16_t threshold = 0;
     uint16_t threshold_upper = 0;
     uint16_t threshold_lower = 0;
-    uint8_t finger_present = 0;
+    uint8_t occupied = 0;
+    uint8_t pressed = 0;
     uint32_t now = 0;
-    // uint8_t press_notified = 0;
+    uint32_t start_tick = 0;
+    Press_type type = NONE;
 };
 
 #endif

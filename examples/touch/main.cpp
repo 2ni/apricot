@@ -10,13 +10,12 @@
 #include "pins.h"
 #include "touch.h"
 #include "sleep.h"
-#include "millis.h"
 
-// to avoid complex division
-// we calculate the needed timer count for the sleep function beforehand
-// and use the internal function _s_sleep()
-#define SLEEP_TIME 50
-#define SLEEP_PER UINT32_C(SLEEP_TIME)*1024/1000
+#define SIMPLE
+
+void released(TOUCH::Press_type type, uint32_t ticks) {
+  DF("press: %s for %lus\n", type == TOUCH::SHORT ? "SHORT" : (type == TOUCH::LONG ? "LONG" : "VERYLONG"), ticks*8/32768);
+}
 
 int main(void) {
   mcu_init();
@@ -26,34 +25,38 @@ int main(void) {
 
   pins_disable_buffer();
 
-  uint8_t is_pressed;
+#ifdef SIMPLE
 
   while (1) {
-    pins_enable_buffer(&pins_led);
-    pins_enable_buffer(&PB7);
-    is_pressed = button.is_pressed(&pins_led);
-    pins_disable_buffer(&PB7);
+    button.is_pressed(&released);
+    sleep.sleep_for(205);
+  }
+
+#elif
+
+  uint32_t start_tick = 0;
+  uint8_t occupied = 0;
+  uint8_t is_pressed = 0;
+  while (1) {
+    is_pressed = button.is_pressed();
     if (is_pressed) {
-      // DF("pressed: 0x%02x\n", is_pressed & ~touch_is_pressed_bm);
-      // set led when long touch was reached
-      if (is_pressed & touch_long_bm) {
+      // inital press
+      if (!occupied) {
+        occupied = 1;
         pins_set(&pins_led, 1);
-      } else if (is_pressed & touch_verylong_bm) {
-        pins_set(&pins_led, 0);
+        start_tick = sleep.current_tick;
       }
     }
 
-    // released, if MSB not set but lower bits set, eg 0x02
-    if (is_pressed && (~is_pressed & touch_is_pressed_bm)) {
-      pins_set(&pins_led, 0);
-      DF("released: 0x%02x\n", is_pressed);
+    // release
+    if (occupied && !is_pressed) {
+      occupied = 0;
+        pins_set(&pins_led, 0);
+      DF("duration: %lus\n", (sleep.current_tick-start_tick)*8/32768);
     }
 
-    // do not sleep if pressed, as we need to measure time for short/long touch (which is on hold if sleeping)
-    if (!is_pressed) {
-      pins_disable_buffer(&pins_led);
-      _sleep(SLEEP_PER, 5);
-      pins_enable_buffer(&pins_led);
-    }
+    sleep.sleep_for(205);
   }
+
+#endif
 }

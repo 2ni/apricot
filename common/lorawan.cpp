@@ -1,6 +1,18 @@
 /*
  * resources:
  * - https://github.com/matthijskooijman/arduino-lmic
+ *
+ * TODOs
+ * - setup gateway for v3
+ * - peristent mode
+ * - adaptive mode
+ * - check cflist 8 vs 16 bit (downlink [8] should not be overwritten!
+ * - rx window should start listening after 1sec + 1.5-2 symbols (symbol depending on datarate)
+ * - maybe shorten timeout settings of rfm95
+ * - test clock while sleeping and how to be able to sleep a certain amount of time
+ * - packet with fixed max length data instead of pointer
+ * - test on v3
+ *
  */
 
 #include <avr/io.h>
@@ -14,6 +26,8 @@
 #include "uart.h"
 #include "rfm95.h"
 #include "sleep.h"
+#include "sleepv2.h"
+#include "mcu.h"
 #include "timer.h"
 #include "millis.h"
 
@@ -98,7 +112,7 @@ void LORAWAN::reset_session() {
   session.rxdelay = 1;
   session.rxoffset = 0;
   session.rx2datarate = 9;
-  session.txpower = 12;
+  session.txpower = 16;
   session.chmask = 0x07; // only 8681000, 8683000, 8685000 by default
   chmask_current_pos = 0; // we start at 8681000
 
@@ -140,37 +154,18 @@ uint8_t LORAWAN::init(pins_t *cs) {
  * JOIN_ACCEPT_DELAY1 5sec
  * JOIN_ACCEPT_DELAY2 6sec (869.525MHz, SF12)
  *
- * join accept: 33 bytes -> airtime: 1.8sec
- * -> 6sec + 1.8sec = 7.8sec
- *
- * according to @Pshemek:
- *  join accept for SF7 is sent 4s after join request, for SF12 after exactly 5s + airtime
- *
  * SF7 and SF8 should have a join reply in RX1 using the parameters of the request if gw has available airtime
  * SF9+ response is in RX2 at SF12
  *
- * what works
- * - join request: ch 4, SF9,  join accept: ch 4, SF9
- * - join request: ch 7, SF9,  join accept: ch 7,  SF9  (~5.3sec)
- * - join request: ch 7, SF10, join accept: ch 99, SF12 (~6.8sec)
- * - join request: ch 6, SF11, join accept: ch 99, SF12 (~7.8sec)
- * - join request: ch x, SF12, join accept: ch 99, SF12 (~6.8-8.0sec)
- *
  */
 
-// TIMER timer;
 
 /*
  * return 0: no errors
  *
  * tries to join several time by lowering the datarate each time
- * maybe it's just better to just start at SF12, as we rarely get any response before
  *
- * CAUTION: we have an additional waiting of 50ms because millis_time() seems to be ~50ms too fast
- *
- * TODO save received cflist, offset and delay
  * TODO handle sending power (rssi)
- * TODO reset session when joining to get default values
  *
  */
 Status LORAWAN::join(uint8_t wholescan) {
@@ -184,14 +179,7 @@ Status LORAWAN::join(uint8_t wholescan) {
 
   uint8_t valid_lora;
   uint8_t trials = 0;
-  uint32_t now;
-  uint16_t airtime = 0;
   uint16_t num_trials = 7;
-
-  // we depend on timings so we init it, if not yet done
-  if (!millis_is_init()) {
-    millis_init();
-  }
 
   // we try multiple times to get a join accept package (trying to fullfill retransmission on p.65 of 1.0.3 specification)
   while (trials < num_trials) {
@@ -200,7 +188,6 @@ Status LORAWAN::join(uint8_t wholescan) {
     tx_frq_pos = get_next_frq_pos();
     rx_frq_pos = tx_frq_pos;
     rx_datarate = tx_datarate;
-    uint16_t sleep_window_rx1= 5000;
 
     // use correct datarates, frequencies for join request and accept listening
     // see "receive windows" in https://lora-alliance.org/sites/default/files/2018-05/lorawan_regional_parameters_v1.0.2_final_1944_1.pdf
@@ -208,122 +195,81 @@ Status LORAWAN::join(uint8_t wholescan) {
     // join accept SF7-SF11 -> RX1 after 5sec: SF7-SF12
     // join accept SF7-SF12 -> RX2 after 6sec: SF12, 869.525MHz
 
-/*
-  uint8_t total = 3;
-  for (uint8_t i=0; i<total; i++) {
-    uint8_t window2 = 0;
-    send_join_request(tx_frq_pos, tx_datarate);
-    now = millis_time();
-    DF("\n" BOLD("%u. join request sent ch%u SF%u") "\n", trials, tx_frq_pos, tx_datarate);
-    DF("(%lu) RX1: waiting for data ch%u SF%u\n", millis_time()-now, tx_frq_pos, rx_datarate);
-    sleep_ms(sleep_window_rx1-(millis_time()-now));
-    if (rfm95.wait_for_single_package(tx_frq_pos, rx_datarate) == OK && decode_join_accept() == OK) {
-      uart_arr("key", session.devaddr, 4);
-    } else {
-      DL("no data");
-      // window2 = 1;
+    // create join request packet and send it
+    uint8_t len = 23; // mhrd(1) + appeui(8) + deveui(8) + devnonce(2) + mic(4)
+    uint8_t data[len];
+    memset(data, 0, len);
+    Packet join = { .data=data, .len=len };
+
+    join.data[0] = 0x00; // mac_header (mtype 000: join request)
+
+    for (uint8_t i=0; i<8; i++) {
+      join.data[1+i] = otaa.appeui[7-i];
     }
-    if (window2) {
-      rx_datarate = 12;
-      tx_frq_pos = 99;
-      DF("(%lu) RX2: waiting for data ch%u SF%u\n", millis_time()-now, tx_frq_pos, rx_datarate);
-      sleep_ms(sleep_window_rx1+995-(millis_time()-now));
-      if (rfm95.wait_for_single_package(tx_frq_pos, rx_datarate) == OK && decode_join_accept() == OK) {
-        uart_arr("key", session.devaddr, 4);
-        DF("rx: %u\n", tx_frq_pos);
-      } else {
-        DL("no data");
-      }
+
+    for (uint8_t i=0; i<8; i++) {
+      join.data[9+i] = otaa.deveui[7-i];
     }
-    DL("next");
-    if (i<(total-1)) sleep_s(10);
-    tx_datarate++;
-  }
 
-    DL("all done.");
+    join.data[17] = (otaa.devnonce & 0x00FF);
+    join.data[18] = ((otaa.devnonce >> 8) & 0x00FF);
 
-    while(1);
-*/
+    // uart_arr(WARN("pkg join"), join.data, join.len);
 
-    // PORTC.DIRSET = PIN5_bm;
-    send_join_request(tx_frq_pos, tx_datarate);
-    // PORTC.OUTSET = PIN5_bm;
-    now = millis_time();
-    DF("\n" BOLD("%u. join request sent %lu SF%u") "\n", trials, session.frequencies[tx_frq_pos], tx_datarate);
+    join.len -= 4; // ignore mic
+    uint8_t datam[4] = {0};
+    Packet mic = { .data=datam, .len=4 };
+    aes128_mic(otaa.appkey, &join, &mic); // len without mic
+    join.len += 4;
+    for (uint8_t i=0; i<4; i++) {
+      join.data[join.len-4+i] = mic.data[i];
+    }
+
+    uint32_t tx_tick;
+    rfm95.send(&join, session.frequencies[tx_frq_pos], tx_datarate, session.txpower, &tx_tick);
+    uint32_t rx_window_tick = tx_tick + 5*TICKS_PER_SEC;
+
+    DF("\n" BOLD("(%lu) %u. join request sent %lu SF%u") "\n", tx_tick, trials, session.frequencies[tx_frq_pos], tx_datarate);
 
 
     // rx1 window: 5sec + airtime(33, rx_datarate)
     // SF10 join accept ~5536ms (airtime: 452ms)
     if (rx_datarate < 12) {
-      airtime = calc_airtime(33, rx_datarate); // join request len = 33bytes
-      // timer.stop();
-      DF("(%lu) RX1: waiting for data %lu SF%u (air: %u)\n", millis_time()-now, session.frequencies[rx_frq_pos], rx_datarate, airtime);
-      // while ((millis_time()-now) < (5050)) {}
-      sleep_ms(sleep_window_rx1-(millis_time()-now));
-      now = millis_time();
-      // PORTC.OUTCLR = PIN5_bm;
+      DF("(%lu) RX1: waiting for data %lu SF%u\n", rx_window_tick, session.frequencies[rx_frq_pos], rx_datarate);
+      sleep.sleep_until(rx_window_tick);
       if (rfm95.wait_for_single_package(session.frequencies[rx_frq_pos], rx_datarate) == OK && decode_join_accept() == OK) {
         session.txdatarate = tx_datarate;
         valid_lora = 1;
       }
-      /*
-      rfm95.receive_continuous(session.frequencies[rx_frq_pos], rx_datarate);
-      timer.start(100+airtime + airtime/8);
-
-       while (!timer.timed_out() && !valid_lora) {
-        // rfm_interrupt==1 -> we have data ready
-        if (get_output(&rfm_interrupt) && decode_join_accept() == OK) {
-          valid_lora = 1;
-        }
-      }
-      */
 
       if (valid_lora) {
-        DF(OK("(%lu) RX1 success") "\n", millis_time()-now);
+        DF(OK("(%lu) RX1 success") "\n", sleep.current_tick);
         if (!wholescan) {
           return OK;
         }
       } else {
-        DF(NOK("(%lu) RX1 timeout") "\n", millis_time()-now);
+        DF(NOK("(%lu) RX1 timeout") "\n", sleep.current_tick);
       }
-      sleep_window_rx1 = 0;
     }
 
     // rx2 window: 6sec + airtime(33, rx_datarate)
-    // receive_continuous needs to start at 6000ms
-    // join accept ~7946ms (airtime: 1810ms)
-    // receive time in middle of preamble except time
     rx_datarate = 12;
     rx_frq_pos = 8; // 8695250
     valid_lora = 0;
-    airtime = calc_airtime(33, rx_datarate);
-    // timer.stop();
-    DF("(%lu) RX2: waiting for data %lu SF%u (air: %u)\n", millis_time()-now, session.frequencies[rx_frq_pos], rx_datarate, airtime);
-    // while ((millis_time()-now) < (6060)) {}
-    sleep_ms(sleep_window_rx1+1000-(millis_time()-now));
+    DF("(%lu) RX2: waiting for data %lu SF%u\n", rx_window_tick + TICKS_PER_SEC, session.frequencies[rx_frq_pos], rx_datarate);
+    sleep.sleep_until(rx_window_tick + TICKS_PER_SEC);
     if (rfm95.wait_for_single_package(session.frequencies[rx_frq_pos], rx_datarate) == OK && decode_join_accept() == OK) {
       session.txdatarate = tx_datarate;
       valid_lora = 1;
     }
-    /*
-    rfm95.receive_continuous(session.frequencies[rx_frq_pos], rx_datarate);
-    timer.start(100+airtime + airtime/8);
-
-    while (!timer.timed_out() && !valid_lora) {
-      // rfm_interrupt==1 -> we have data ready
-      if (get_output(&rfm_interrupt) && !decode_join_accept() = OK) {
-        valid_lora = 1;
-      }
-    }
-    */
 
     if (valid_lora) {
-      DF(OK("(%lu) RX2 success") "\n", millis_time()-now);
+      DF(OK("(%lu) RX2 success") "\n", sleep.current_tick);
       if (!wholescan) {
         return OK;
       }
     } else {
-      DF(NOK("(%lu) RX2 timeout") "\n", millis_time()-now);
+      DF(NOK("(%lu) RX2 timeout") "\n", sleep.current_tick);
     }
 
     tx_datarate++;
@@ -334,21 +280,11 @@ Status LORAWAN::join(uint8_t wholescan) {
       // DL(NOK("timeout!"));
       // TODO sleep 15sec, 30sec, 1min, 5min, 30min, 60min (repeat)
       // https://lora-developers.semtech.com/library/tech-papers-and-guides/the-book/joining-and-rejoining/
-      uint8_t sleep_time = wholescan ? 5 : (uint8_t)(5+rfm95.get_random(8) / 8);
+      uint8_t sleep_time = wholescan ? 5 : (uint8_t)(join.data[join.len-1]&0x07)*4; // pseudo random, taking 3 lsb from last byte of join
       DF("sleeping: %us\n", sleep_time);
-      sleep_s(sleep_time); // sleep random time 5-37sec
+      sleep.sleep_for((uint32_t)sleep_time * TICKS_PER_SEC); // sleep random time 5-37sec
     }
   }
-
-  // timer.stop();
-
-  /* we get appskey, nwkskey, devaddr
-  if (valid_lora) {
-    uart_arr("appskey", appskey, 16);
-    uart_arr("nwkskey", nwkskey, 16);
-    uart_arr("devaddr", devaddr, 4);
-  }
-  */
 
   return ERROR;
 }
@@ -395,20 +331,17 @@ Status LORAWAN::send(const Packet *payload, Packet *rx_payload, const uint8_t da
 
   uint8_t tx_frq_pos = get_next_frq_pos();
 
-  // we depend on timings so we init it, if not yet done
-  if (!millis_is_init()) {
-    millis_init();
-  }
+  PORTA.DIRSET = PIN7_bm;
 
-  rfm95.send(&lora, session.frequencies[tx_frq_pos], tx_datarate, session.txpower);
-  uint32_t now = millis_time();
+  uint32_t tx_tick;
+  rfm95.send(&lora, session.frequencies[tx_frq_pos], tx_datarate, session.txpower, &tx_tick);
   session.counter++;
-  DF("package sent %lu SF%u\n", session.frequencies[tx_frq_pos], tx_datarate);
+  DF("(%lu) package sent %lu SF%u\n", tx_tick, session.frequencies[tx_frq_pos], tx_datarate);
 
   uint8_t rx_frq_pos = tx_frq_pos;
   uint8_t rx_datarate = tx_datarate + session.rxoffset;
 
-  uint16_t sleep_window_rx1 = session.rxdelay*1000-0; // convert in ms, for 1s -> 990ms
+  uint32_t rx_window_tick = tx_tick + session.rxdelay*TICKS_PER_SEC;
 
   // rx_frq_pos = 8;
   // rx_datarate = 9;
@@ -435,33 +368,30 @@ Status LORAWAN::send(const Packet *payload, Packet *rx_payload, const uint8_t da
     // rx1 window
     // no rx1 window for SF12 as it would takte too much time for 1sec window (airtime 1.8sec)
     if (datarate != 12) {
-      DF("(%lu) RX1: waiting for data %lu SF%u\n", millis_time()-now, session.frequencies[rx_frq_pos], rx_datarate);
-      // while ((millis_time()-now) < 1010);
-      sleep_ms(sleep_window_rx1-(millis_time()-now));
-      now = millis_time();
+      DF("(%lu) RX1: waiting for data %lu SF%u\n", rx_window_tick, session.frequencies[rx_frq_pos], rx_datarate);
+      sleep.sleep_until(rx_window_tick);
+      PORTA.OUTCLR = PIN7_bm;
       if (rfm95.wait_for_single_package(session.frequencies[rx_frq_pos], rx_datarate) == OK) {
         // TODO if do_check and no LORA_MAC_LINKCHECK received -> rejoin
         // TODO handle ADR LinkADRReq, LinkADRAns (add to queue to send on next uplink)
         status_received = decode_data_down(rx_payload, &rx_cmds, ack);
-        DL(OK("received rx1"));
+        DF(OK("(%lu) RX1 success") "\n", sleep.current_tick);
         if (rx_cmds.len) {
           process_cmds(&rx_cmds);
           uart_arr("rx cmds", rx_cmds.data, rx_cmds.len);
         }
         return status_received;
       }
-      sleep_window_rx1 = 0;
     }
 
     // rx2 window
     rx_frq_pos = 8; // 8695250
     rx_datarate = session.rx2datarate;
-    DF("(%lu) RX2: waiting for data %lu SF%u\n", millis_time()-now, session.frequencies[rx_frq_pos], rx_datarate);
-    // while ((millis_time()-now) < 2020);
-    sleep_ms(sleep_window_rx1+1000-(millis_time()-now));
+    DF("(%lu) RX2: waiting for data %lu SF%u\n", rx_window_tick + TICKS_PER_SEC, session.frequencies[rx_frq_pos], rx_datarate);
+    sleep.sleep_until(rx_window_tick + TICKS_PER_SEC);
     if (rfm95.wait_for_single_package(session.frequencies[rx_frq_pos], rx_datarate) == OK) {
       status_received = decode_data_down(rx_payload, &rx_cmds, ack);
-      DL(OK("received rx2"));
+      DF(OK("(%lu) RX2 success") "\n", sleep.current_tick);
       if (rx_cmds.len) {
         uart_arr("rx cmds", rx_cmds.data, rx_cmds.len);
       }

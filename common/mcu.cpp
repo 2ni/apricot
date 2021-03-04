@@ -3,6 +3,7 @@
 #include "uart.h"
 #include "sleep.h"
 
+SLEEP sleep;
 
 void mcu_init() {
   // set prescaler to 2 for 10MHz which is suitable for 3.3v
@@ -17,6 +18,9 @@ void mcu_init() {
 
   // sleep command puts mcu in standby (idle, standby, power down)
   SLPCTRL.CTRLA = (SLPCTRL_SMODE_STDBY_gc | SLPCTRL_SEN_bm);
+
+  // start rtc
+  sleep.init();
 
   // init uart for debugging
   uart_init();

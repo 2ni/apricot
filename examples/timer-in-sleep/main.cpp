@@ -13,14 +13,19 @@
 #define SLEEP_TIME 50
 #define SLEEP_PER UINT16_C(SLEEP_TIME)*1024/1000
 
-SLEEP sleep;
-
 int main(void) {
   mcu_init();
-  sleep.init();
   PORTA.DIRSET = PIN7_bm;
   PORTB.DIRSET = PIN5_bm;
   TOUCH button(&PB7);
+
+  /*
+  TOUCH seat(&PA3);
+  while (1) {
+    DF("seat: %u\n", seat.get_data());
+    sleep.sleep_for(4096);
+  }
+  */
 
   pins_disable_buffer();
 
@@ -50,7 +55,7 @@ int main(void) {
   uint32_t start_tick = 0;
   while (1) {
     pins_enable_buffer(&PB7);
-    is_pressed = button.is_pressed(&pins_led);
+    is_pressed = button.is_pressed();
     pins_disable_buffer(&PB7);
     if (is_pressed && !is_taken) {
       is_taken = 1;

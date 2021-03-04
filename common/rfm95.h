@@ -14,7 +14,7 @@ class RFM95 {
     void     unselect();
     uint8_t  read_reg(uint8_t addr);
     void     write_reg(uint8_t addr, uint8_t data);
-    void     send(const Packet *packet, const uint32_t frq, const uint8_t datarate, const uint8_t power=12);
+    void     send(const Packet *packet, const uint32_t frq, const uint8_t datarate, const uint8_t power=12, uint32_t *tx_tick=0);
     void     receive_continuous(uint32_t frq, uint8_t datarate);
     Status   wait_for_single_package(uint32_t frq, uint8_t datarate);
     Status   read(Packet *packet);
