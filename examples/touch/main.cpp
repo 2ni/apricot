@@ -29,7 +29,7 @@ int main(void) {
 
   while (1) {
     button.is_pressed(&released);
-    clock.sleep_for(205);
+    clock.sleep_for(205); // 50ms*32768/8/1000 = 204.8
   }
 
 #elif
