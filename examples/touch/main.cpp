@@ -34,6 +34,7 @@ int main(void) {
 
 #if EXAMPLE == 1
 
+  // set to 1sec intervalls
   clock.init(32767);
   while (1) {
     button.is_pressed(&released_seconds, 3, 5);
