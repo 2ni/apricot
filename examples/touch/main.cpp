@@ -11,10 +11,17 @@
 #include "touch.h"
 #include "clock.h"
 
-#define SIMPLE
+// 1: loop over 1sec
+// 2: use simple is_pressed looping over 50ms
+// 3: extended example as 2 but done manually
+#define EXAMPLE 1
 
 void released(TOUCH::Press_type type, uint32_t ticks) {
   DF("press: %s for %lus\n", type == TOUCH::SHORT ? "SHORT" : (type == TOUCH::LONG ? "LONG" : "VERYLONG"), ticks*8/32768);
+}
+
+void released_seconds(TOUCH::Press_type type, uint32_t ticks) {
+  DF("press: %s for %lus\n", type == TOUCH::SHORT ? "SHORT" : (type == TOUCH::LONG ? "LONG" : "VERYLONG"), ticks);
 }
 
 int main(void) {
@@ -25,14 +32,21 @@ int main(void) {
 
   pins_disable_buffer();
 
-#ifdef SIMPLE
+#if EXAMPLE == 1
 
+  clock.init(32767);
+  while (1) {
+    button.is_pressed(&released_seconds, 3, 5);
+    clock.sleep_for(1);
+  }
+
+#elif EXAMPLE == 2
   while (1) {
     button.is_pressed(&released);
     clock.sleep_for(205); // 50ms*32768/8/1000 = 204.8
   }
 
-#elif
+#elif EXAMPLE == 3
 
   uint32_t start_tick = 0;
   uint8_t occupied = 0;

@@ -100,6 +100,10 @@ uint16_t TOUCH::get_data() {
   return result;
 }
 
+uint8_t TOUCH::is_pressed(void (*fn)(Press_type, uint32_t), uint32_t tick_long, uint32_t tick_verylong) {
+  return is_pressed(fn, &pins_led, tick_long, tick_verylong);
+}
+
 uint8_t TOUCH::is_pressed(void (*fn)(Press_type, uint32_t), pins_t *led, uint32_t tick_long, uint32_t tick_verylong) {
   uint16_t v = get_data();
 
