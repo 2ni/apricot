@@ -10,7 +10,15 @@ Main features:
 - esd protection
 - pinout supporting i2c, spi and general purpose pins
 - many [examples](/examples)
-
+- for lorawan connect the following pins from the rfm95 to the main board (D0, D1, D2 is not needed):
+```
+MI  - PC1
+MO  - PC2
+SCK - PC0
+CS  - PC3
+GND - GND
+3.3 - 3.3
+```
 
 ### COMMANDS
 ```

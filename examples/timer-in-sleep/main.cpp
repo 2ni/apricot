@@ -2,7 +2,7 @@
 #include <avr/interrupt.h>
 #include "uart.h"
 #include "mcu.h"
-#include "sleepv2.h"
+#include "clock.h"
 #include "touch.h"
 #include "pins.h"
 
@@ -23,7 +23,7 @@ int main(void) {
   TOUCH seat(&PA3);
   while (1) {
     DF("seat: %u\n", seat.get_data());
-    sleep.sleep_for(4096);
+    clock.sleep_for(4096);
   }
   */
 
@@ -34,22 +34,22 @@ int main(void) {
   uint16_t until = TICKS_PER_SECOND;
   DL("sent");
   // PORTA.OUTSET = PIN7_bm;
-  uint16_t now = sleep.current_tick;
+  uint16_t now = clock.current_tick;
   _delay_ms(299);
   DL("doing some more stuff");
-  sleep.sleep_until(now + until);
+  clock.sleep_until(now + until);
   // PORTA.OUTCLR = PIN7_bm;
   DL("start listening 1sec from sent");
 
   // test sleep only once, RTC deactivated afterwards
   DL("sleep once 1s");
-  sleep.sleep_once(1, sleep.SEC);
+  clock.sleep_once(1, clock.SEC);
   DL("done");
 
 #ifdef TEST_SLEEP_CONTINUOUS
   DL("test button every 50ms with RTC on all the time");
-  // sleep.init(32767);
-  sleep.init();
+  // clock.init(32767);
+  clock.init();
   uint8_t is_taken = 0;
   uint8_t is_pressed = 0;
   uint32_t start_tick = 0;
@@ -60,19 +60,19 @@ int main(void) {
     if (is_pressed && !is_taken) {
       is_taken = 1;
       PORTB.OUTSET = PIN5_bm;
-      start_tick = sleep.current_tick;
+      start_tick = clock.current_tick;
       // DF("start: %lu\n", start_tick);
     }
 
     if (!is_pressed && is_taken) {
       is_taken = 0;
       PORTB.OUTCLR = PIN5_bm;
-      uint32_t end_tick = sleep.current_tick;
-      // DF("duration: %lus\n", sleep.current_tick + (sleep.current_tick > start_tick ? -start_tick : start_tick));
-      DF("duration (50.0488ms precision, because of sleep): %lums\n", sleep.ticks2ms(end_tick + (end_tick > start_tick ? -start_tick : start_tick)));
+      uint32_t end_tick = clock.current_tick;
+      // DF("duration: %lus\n", clock.current_tick + (clock.current_tick > start_tick ? -start_tick : start_tick));
+      DF("duration (50.0488ms precision, because of sleep): %lums\n", clock.ticks2ms(end_tick + (end_tick > start_tick ? -start_tick : start_tick)));
     }
-    // sleep.sleep_for(1);
-    sleep.sleep_for(205); // 8/32768*1000*205 = 50.048828125ms
+    // clock.sleep_for(1);
+    clock.sleep_for(205); // 8/32768*1000*205 = 50.048828125ms
   }
 #else
   // test sleep modes which make use of sleep once events
@@ -86,7 +86,7 @@ int main(void) {
     }
 
     // PORTA.OUTCLR = PIN7_bm;
-    sleep.sleep_once(SLEEP_PER, 5);
+    clock.sleep_once(SLEEP_PER, 5);
     // PORTA.OUTSET = PIN7_bm;
   }
 #endif

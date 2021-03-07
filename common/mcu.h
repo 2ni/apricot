@@ -2,9 +2,9 @@
 #define __MCU__
 
 #include <avr/io.h>
-#include "sleepv2.h"
+#include "clock.h"
 
-extern SLEEP sleep;
+extern CLOCK clock;
 
 void mcu_init();
 uint16_t get_vin();

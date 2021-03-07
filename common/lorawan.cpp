@@ -25,11 +25,8 @@
 #include "cmac.h"
 #include "uart.h"
 #include "rfm95.h"
-#include "sleep.h"
-#include "sleepv2.h"
+#include "clock.h"
 #include "mcu.h"
-#include "timer.h"
-#include "millis.h"
 
 /*
  * otaa deveui, appeui, appkey defined in keys.h -> generate devaddr, nwkskey, appskey
@@ -236,19 +233,19 @@ Status LORAWAN::join(uint8_t wholescan) {
     // SF10 join accept ~5536ms (airtime: 452ms)
     if (rx_datarate < 12) {
       DF("(%lu) RX1: waiting for data %lu SF%u\n", rx_window_tick, session.frequencies[rx_frq_pos], rx_datarate);
-      sleep.sleep_until(rx_window_tick);
+      clock.sleep_until(rx_window_tick);
       if (rfm95.wait_for_single_package(session.frequencies[rx_frq_pos], rx_datarate) == OK && decode_join_accept() == OK) {
         session.txdatarate = tx_datarate;
         valid_lora = 1;
       }
 
       if (valid_lora) {
-        DF(OK("(%lu) RX1 success") "\n", sleep.current_tick);
+        DF(OK("(%lu) RX1 success") "\n", clock.current_tick);
         if (!wholescan) {
           return OK;
         }
       } else {
-        DF(NOK("(%lu) RX1 timeout") "\n", sleep.current_tick);
+        DF(NOK("(%lu) RX1 timeout") "\n", clock.current_tick);
       }
     }
 
@@ -257,19 +254,19 @@ Status LORAWAN::join(uint8_t wholescan) {
     rx_frq_pos = 8; // 8695250
     valid_lora = 0;
     DF("(%lu) RX2: waiting for data %lu SF%u\n", rx_window_tick + TICKS_PER_SEC, session.frequencies[rx_frq_pos], rx_datarate);
-    sleep.sleep_until(rx_window_tick + TICKS_PER_SEC);
+    clock.sleep_until(rx_window_tick + TICKS_PER_SEC);
     if (rfm95.wait_for_single_package(session.frequencies[rx_frq_pos], rx_datarate) == OK && decode_join_accept() == OK) {
       session.txdatarate = tx_datarate;
       valid_lora = 1;
     }
 
     if (valid_lora) {
-      DF(OK("(%lu) RX2 success") "\n", sleep.current_tick);
+      DF(OK("(%lu) RX2 success") "\n", clock.current_tick);
       if (!wholescan) {
         return OK;
       }
     } else {
-      DF(NOK("(%lu) RX2 timeout") "\n", sleep.current_tick);
+      DF(NOK("(%lu) RX2 timeout") "\n", clock.current_tick);
     }
 
     tx_datarate++;
@@ -282,7 +279,7 @@ Status LORAWAN::join(uint8_t wholescan) {
       // https://lora-developers.semtech.com/library/tech-papers-and-guides/the-book/joining-and-rejoining/
       uint8_t sleep_time = wholescan ? 5 : (uint8_t)(join.data[join.len-1]&0x07)*4; // pseudo random, taking 3 lsb from last byte of join
       DF("sleeping: %us\n", sleep_time);
-      sleep.sleep_for((uint32_t)sleep_time * TICKS_PER_SEC); // sleep random time 5-37sec
+      clock.sleep_for((uint32_t)sleep_time * TICKS_PER_SEC); // sleep random time 5-37sec
     }
   }
 
@@ -369,13 +366,13 @@ Status LORAWAN::send(const Packet *payload, Packet *rx_payload, const uint8_t da
     // no rx1 window for SF12 as it would takte too much time for 1sec window (airtime 1.8sec)
     if (datarate != 12) {
       DF("(%lu) RX1: waiting for data %lu SF%u\n", rx_window_tick, session.frequencies[rx_frq_pos], rx_datarate);
-      sleep.sleep_until(rx_window_tick);
+      clock.sleep_until(rx_window_tick);
       PORTA.OUTCLR = PIN7_bm;
       if (rfm95.wait_for_single_package(session.frequencies[rx_frq_pos], rx_datarate) == OK) {
         // TODO if do_check and no LORA_MAC_LINKCHECK received -> rejoin
         // TODO handle ADR LinkADRReq, LinkADRAns (add to queue to send on next uplink)
         status_received = decode_data_down(rx_payload, &rx_cmds, ack);
-        DF(OK("(%lu) RX1 success") "\n", sleep.current_tick);
+        DF(OK("(%lu) RX1 success") "\n", clock.current_tick);
         if (rx_cmds.len) {
           process_cmds(&rx_cmds);
           uart_arr("rx cmds", rx_cmds.data, rx_cmds.len);
@@ -388,10 +385,10 @@ Status LORAWAN::send(const Packet *payload, Packet *rx_payload, const uint8_t da
     rx_frq_pos = 8; // 8695250
     rx_datarate = session.rx2datarate;
     DF("(%lu) RX2: waiting for data %lu SF%u\n", rx_window_tick + TICKS_PER_SEC, session.frequencies[rx_frq_pos], rx_datarate);
-    sleep.sleep_until(rx_window_tick + TICKS_PER_SEC);
+    clock.sleep_until(rx_window_tick + TICKS_PER_SEC);
     if (rfm95.wait_for_single_package(session.frequencies[rx_frq_pos], rx_datarate) == OK) {
       status_received = decode_data_down(rx_payload, &rx_cmds, ack);
-      DF(OK("(%lu) RX2 success") "\n", sleep.current_tick);
+      DF(OK("(%lu) RX2 success") "\n", clock.current_tick);
       if (rx_cmds.len) {
         uart_arr("rx cmds", rx_cmds.data, rx_cmds.len);
       }

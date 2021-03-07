@@ -1,11 +1,11 @@
 /*
  *
  */
-#ifndef __SLEEPV2_H__
-#define __SLEEPV2_H__
+#ifndef __CLOCK_H__
+#define __CLOCK_H__
 #include <avr/io.h>
 
-class SLEEP {
+class CLOCK {
   public:
     typedef enum {
       MSEC,
@@ -17,7 +17,7 @@ class SLEEP {
       CONTINUOUS
     } Mode;
 
-    SLEEP();
+    CLOCK();
     void     init(uint16_t per = 7);
     void     start();
     void     stop();
@@ -30,7 +30,7 @@ class SLEEP {
     void     sleep_once(uint16_t duration, Duration_type ms_or_s);
 
     volatile uint32_t current_tick;
-    static SLEEP *sleep_ptr;
+    static CLOCK *clock_ptr;
 
   private:
     uint8_t _is_running;

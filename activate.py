@@ -24,6 +24,9 @@ os.chdir(os.path.dirname(os.path.realpath(__file__)))
 # unlink any existing file
 os.system('find src/ -type l -delete')
 
+# clear generated files
+os.system('rm -rf src/*.{d,o}')
+
 # always link common functions
 # if os.path.isdir('examples/common'):
 #    for f in os.listdir('examples/common/'):

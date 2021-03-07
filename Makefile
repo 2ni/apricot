@@ -71,8 +71,9 @@ all: 	$(PRJ).hex tests
 
 clean:
 	rm -f *.hex *.elf
-	rm -f $(OBJ) $(DEPENDS)
+	@# rm -f $(OBJ) $(DEPENDS)
 	rm -f $(SRC)/*.{d,o}
+	rm -f $(COMMON)/*.{d,o}
 
 # objects from c files
 %.c.o: %.c Makefile

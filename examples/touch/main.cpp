@@ -9,7 +9,7 @@
 #include "mcu.h"
 #include "pins.h"
 #include "touch.h"
-#include "sleep.h"
+#include "clock.h"
 
 #define SIMPLE
 
@@ -29,7 +29,7 @@ int main(void) {
 
   while (1) {
     button.is_pressed(&released);
-    sleep.sleep_for(205);
+    clock.sleep_for(205);
   }
 
 #elif
@@ -44,7 +44,7 @@ int main(void) {
       if (!occupied) {
         occupied = 1;
         pins_set(&pins_led, 1);
-        start_tick = sleep.current_tick;
+        start_tick = clock.current_tick;
       }
     }
 
@@ -52,10 +52,10 @@ int main(void) {
     if (occupied && !is_pressed) {
       occupied = 0;
         pins_set(&pins_led, 0);
-      DF("duration: %lus\n", (sleep.current_tick-start_tick)*8/32768);
+      DF("duration: %lus\n", (clock.current_tick-start_tick)*8/32768);
     }
 
-    sleep.sleep_for(205);
+    clock.sleep_for(205);
   }
 
 #endif

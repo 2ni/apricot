@@ -17,7 +17,7 @@
 #define LORA_MAC_DICHANNEL  0x0A
 #define LORA_MAC_DEVICETIME 0x0D
 
-#define TICKS_PER_SEC 4096 // see also common/sleepv2.cpp
+#define TICKS_PER_SEC 4096 // see also common/clock.cpp
 
 class LORAWAN {
   public:

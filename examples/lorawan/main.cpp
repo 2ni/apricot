@@ -7,10 +7,10 @@
 #include "mcu.h"
 #include "lorawan.h"
 #include "keys.h"
-#include "sleep.h"
 #include "touch.h"
 #include "sht20.h"
 #include "isl29035.h"
+#include "mcu.h"
 
 #define OTAA
 
@@ -23,6 +23,9 @@
 LORAWAN lora;
 SHT20 sht20;
 ISL29035 isl;
+
+uint8_t is_seated = 0;
+uint32_t start_tick = 0;
 
 uint8_t  EEMEM ee_have_session;
 Lora_session EEMEM ee_session;
@@ -66,6 +69,62 @@ void join() {
   }
 }
 
+void send() {
+  // hsb lsb - temp, hum, lux
+  uint8_t len = 8;
+  uint8_t data[len] = { 0 };
+  Packet payload = { .data=data, .len=len };
+
+  uint8_t rx_len = 64;
+  uint8_t rx_data[rx_len] = {0};
+  Packet rx_packet = { .data=rx_data, .len=rx_len };
+
+  DF("counter      : %u\n", lora.session.counter);
+
+  uint16_t temp = sht20.get_temperature();
+  uint16_t hum = sht20.get_humidity();
+  uint16_t lux = 0;
+  isl.read_visible_lux(&lux);
+  uint16_t vin = get_vin();
+
+  payload.data[0] = (temp >> 8) & 0xff;
+  payload.data[1] = temp & 0xff;
+  payload.data[2] = (hum >> 8) & 0xff;
+  payload.data[3] = hum & 0xff;
+  payload.data[4] = (lux >> 8) & 0xff;
+  payload.data[5] = lux & 0xff;
+  payload.data[6] = (vin >> 8) & 0xff;
+  payload.data[7] = vin & 0xff;
+  Status status = lora.send(&payload, &rx_packet);
+  eeprom_update_word(&ee_session.counter, lora.session.counter);
+  if (status == OK) {
+    DL(OK("all good"));
+  } else if (status == NO_ACK) {
+    DL(NOK("ack failed"));
+  }
+
+  if (rx_packet.len) {
+    uart_arr("received message", rx_packet.data, rx_packet.len);
+  } else {
+    DL("no data received");
+  }
+}
+
+void callback_button(TOUCH::Press_type type, uint32_t ticks) {
+  switch (type) {
+    case TOUCH::SHORT:
+      send();
+      break;
+    case TOUCH::LONG:
+      lora.session.txdatarate += 1;
+      if (lora.session.txdatarate > 12) lora.session.txdatarate = 7;
+      DF("datarate: %u\n", lora.session.txdatarate);
+      break;
+    default:
+      break;
+  }
+}
+
 int main(void) {
   mcu_init();
   sht20.init();
@@ -73,7 +132,6 @@ int main(void) {
     DL(NOK("ISL29035 init failed"));
   }
   isl.set_ranges(1, 1); // 4000Lux, 12bit
-  uint16_t lux, temp, hum, vin;
 
   lora.init();
 
@@ -86,97 +144,36 @@ int main(void) {
     print_session();
   }
 
-  // hsb lsb - temp, hum, lux
-  uint8_t len = 8;
-  uint8_t data[len] = { 0 };
-  Packet payload = { .data=data, .len=len };
-
-  uint8_t rx_len = 64;
-  uint8_t rx_data[rx_len] = {0};
-  Packet rx_packet = { .data=rx_data, .len=rx_len };
-
-  uint8_t is_pressed;
-
-
-  uint16_t count_senddata_i = 12000; // send data every ~10min
-  uint16_t count_senddata = 0;
-  uint32_t count_join_i = 144000; // rejoin ~120min
-  uint32_t count_join = 0;
-
 #ifdef OTAA
-  if (!have_session) join();
+  uint32_t last_join_tick = 0;
+  uint32_t last_data_tick = 0;
+  uint8_t enforce = 0;
+
+  if (!have_session) {
+    join();
+    last_join_tick = clock.current_tick;
+    enforce = 1;
+  }
 
   while (1) {
-    is_pressed = button.is_pressed(&pins_led);
+    button.is_pressed(&callback_button);
 
-    // join prioritized over sending data (data will be sent right afte a join)
-    if (count_join >= count_join_i) {
-      is_pressed = touch_long_bm;
-    } else if (count_senddata >= count_senddata_i) {
-      is_pressed = touch_short_bm;
+    // 120*60*1000*32768/8000 = 2h
+    if (clock.current_tick >= (last_join_tick + 29491200)) {
+      last_join_tick = clock.current_tick;
+      join();
+      enforce = 1;
     }
 
-    if (is_pressed) {
-      // DF("pressed: 0x%02x\n", is_pressed & ~touch_is_pressed_bm);
-      // set led when long touch was reached
-      if (is_pressed & touch_long_bm) {
-        pins_set(&pins_led, 1);
-      } else if (is_pressed & touch_verylong_bm) {
-        pins_set(&pins_led, 0);
-      }
+    // 10*60*1000*32768/8000 = 10min
+    if (enforce || clock.current_tick >= (last_data_tick + 2457600)) {
+      last_data_tick = clock.current_tick;
+      send();
+      enforce = 0;
     }
 
-    // released, if MSB not set but lower bits set, eg 0x02
-    if (is_pressed && (~is_pressed & touch_is_pressed_bm)) {
-      pins_set(&pins_led, 0);
-      if (is_pressed == touch_short_bm) {
-        count_senddata = 0;
-        DF("counter      : %u\n", lora.session.counter);
-        temp = sht20.get_temperature();
-        hum = sht20.get_humidity();
-        isl.read_visible_lux(&lux);
-        vin = get_vin();
-
-        payload.data[0] = (temp >> 8) & 0xff;
-        payload.data[1] = temp & 0xff;
-        payload.data[2] = (hum >> 8) & 0xff;
-        payload.data[3] = hum & 0xff;
-        payload.data[4] = (lux >> 8) & 0xff;
-        payload.data[5] = lux & 0xff;
-        payload.data[6] = (vin >> 8) & 0xff;
-        payload.data[7] = vin & 0xff;
-        DL("sending");
-        Status status = lora.send(&payload, &rx_packet);
-        eeprom_update_word(&ee_session.counter, lora.session.counter);
-        if (status == OK) {
-          DL(OK("all good"));
-        } else if (status == NO_ACK) {
-          DL(NOK("ack failed"));
-        }
-
-        if (rx_packet.len) {
-          uart_arr("received message", rx_packet.data, rx_packet.len);
-        } else {
-          DL("no data received");
-        }
-      } else if (is_pressed == touch_long_bm) {
-        have_session = 0;
-        count_join = 0;
-        join();
-        count_senddata = count_senddata_i-1;
-      } else if (is_pressed == touch_verylong_bm) {
-        print_session();
-      }
-    }
-
-    // do not sleep if pressed, as we need to measure time to handle touch variants
-    // (time is on hold while sleeping)
-    if (!is_pressed) {
-      _sleep(SLEEP_PER, 5);
-      count_join++;
-      count_senddata++;
-    }
-
+    // 50ms*32768/1000/8 = 204.8
+    clock.sleep_for(205);
   }
 #else
   lora.session.chmask = 0xff;
@@ -203,48 +200,14 @@ int main(void) {
   */
 
   if (!have_session) print_session();
+
   while (1) {
-    is_pressed = button.is_pressed(&pins_led);
+    button.is_pressed(&callback_button);
 
-    if (is_pressed && (~is_pressed & touch_is_pressed_bm)) {
-      pins_set(&pins_led, 0);
-      if (is_pressed == touch_short_bm) {
-        DF("counter      : %u\n", lora.session.counter);
-        temp = sht20.get_temperature();
-        hum = sht20.get_humidity();
-        isl.read_visible_lux(&lux);
-        vin = get_vin();
+    clock.sleep_for(205); // 8/32768*1000*205 = 50.048828125ms
 
-        payload.data[0] = (temp >> 8) & 0xff;
-        payload.data[1] = temp & 0xff;
-        payload.data[2] = (hum >> 8) & 0xff;
-        payload.data[3] = hum & 0xff;
-        payload.data[4] = (lux >> 8) & 0xff;
-        payload.data[5] = lux & 0xff;
-        payload.data[6] = (vin >> 8) & 0xff;
-        payload.data[7] = vin & 0xff;
-        Status status = lora.send(&payload, &rx_packet, 7, 0); // manually set datarate
-        // Status status = lora.send(&payload, NULL, 7, 0); // manually set datarate
-
-        if (status == OK) {
-          DL(OK("all good"));
-        } else if (status == NO_ACK) {
-          DL(NOK("ack failed"));
-        }
-
-        eeprom_update_word(&ee_session.counter, lora.session.counter);
-        if (rx_packet.len) {
-          uart_arr("received message", rx_packet.data, rx_packet.len);
-        } else {
-          DL("no data received");
-        }
-      }
-    }
-
-    if (!is_pressed) {
-      _sleep(SLEEP_PER, 5);
-    }
   }
 #endif
 
 }
+

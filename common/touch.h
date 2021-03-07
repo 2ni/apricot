@@ -7,11 +7,6 @@
 
 #include "pins.h"
 
-#define touch_is_pressed_bm 0x80
-#define touch_short_bm      0x01
-#define touch_long_bm       0x02
-#define touch_verylong_bm   0x04
-
 class TOUCH {
   public:
     typedef enum {
@@ -24,7 +19,8 @@ class TOUCH {
     TOUCH(pins_t *pin, uint16_t threshold_low = 10, uint16_t threshold_high = 50);
     uint16_t get_data();
     uint16_t get_avg();
-    uint8_t is_pressed(void (*fn)(Press_type, uint32_t) = 0, pins_t *led = &pins_led);
+    // 12288*8/32768 = 3sec, 20480*8/32768 = 5sec
+    uint8_t is_pressed(void (*fn)(Press_type, uint32_t) = 0, pins_t *led = &pins_led, uint32_t tick_long = 12288, uint32_t tick_verylong = 20480);
 
   private:
     void set_thresholds(uint16_t threshold_low, uint16_t threshold_high);

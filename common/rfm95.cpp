@@ -48,7 +48,7 @@ uint8_t RFM95::init() {
   pins_set(cs, 1);    // set high (spi bus disabled by default)
 
   // spi communication should only start after 10ms (p.108)
-  _delay_ms(10); // replace with calls to function from pointer to  SLEEP
+  _delay_ms(10); // replace with calls to function from pointer to CLOCK
 
   // pins_output(dio0, 0); // input, DIO0
   // pins_output(dio1, 0); // input, DIO1
@@ -279,7 +279,7 @@ void RFM95::send(const Packet *packet, const uint32_t frq, const uint8_t datarat
       // DF("irqflags: 0x%02x, status: %u\n", read_reg(0x12), read_reg(0x01) & 0x07);
     }
     PORTA.OUTSET = PIN7_bm;
-    if (tx_tick) *tx_tick = sleep.current_tick;
+    if (tx_tick) *tx_tick = clock.current_tick;
   } else {
     DL(NOK("set tx mode failed"));
   }

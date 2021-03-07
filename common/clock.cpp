@@ -1,18 +1,18 @@
 #include <avr/interrupt.h>
-#include "sleepv2.h"
+#include "clock.h"
 #include "uart.h"
 
-SLEEP* SLEEP::sleep_ptr;
+CLOCK* CLOCK::clock_ptr;
 
 ISR(RTC_CNT_vect) {
   // PORTA.OUTSET = PIN7_bm;
   // PORTA.OUTCLR = PIN7_bm;
   RTC.INTFLAGS = RTC_OVF_bm;
-  SLEEP::sleep_ptr->current_tick++;
+  CLOCK::clock_ptr->current_tick++;
 }
 
-SLEEP::SLEEP() {
-  sleep_ptr = this;
+CLOCK::CLOCK() {
+  clock_ptr = this;
   _is_running = 0;
   _mode = CONTINUOUS;
   RTC.PER = 7; // set default so we can use ms2ticks beforehand
@@ -36,7 +36,7 @@ SLEEP::SLEEP() {
  * 31: 64sec     48d 13h 05m 04s
  *
  */
-void SLEEP::init(uint16_t per) {
+void CLOCK::init(uint16_t per) {
   current_tick = 0;
 
   stop();
@@ -51,23 +51,23 @@ void SLEEP::init(uint16_t per) {
   sei();
 }
 
-uint8_t SLEEP::is_continuous() {
+uint8_t CLOCK::is_continuous() {
   return _mode == CONTINUOUS && _is_running;
 }
 
-void SLEEP::start() {
+void CLOCK::start() {
   _is_running = 1;
   RTC.CNT = 0;
   RTC.CTRLA |= RTC_RTCEN_bm;
 }
 
-void SLEEP::stop() {
+void CLOCK::stop() {
   // RTC.CLKSEL = 0;
   _is_running = 0;
   RTC.CTRLA &= ~RTC_RTCEN_bm;
 }
 
-void SLEEP::sleep_until(uint32_t tick_until) {
+void CLOCK::sleep_until(uint32_t tick_until) {
   _mode = CONTINUOUS;
   while (current_tick != tick_until) {
     // PORTA.OUTCLR = PIN7_bm;
@@ -76,20 +76,20 @@ void SLEEP::sleep_until(uint32_t tick_until) {
   }
 }
 
-void SLEEP::sleep_for(uint32_t ticks) {
+void CLOCK::sleep_for(uint32_t ticks) {
   sleep_until(current_tick + ticks);
 }
 
 /*
  * to spare some time it can be precalculated if fixed, eg
- * SLEEP sleep
+ * CLOCK clock
  * #define TICKS_SLEEP <ms>*32768/1000/(RTC.PER+1)
  */
-uint32_t SLEEP::ms2ticks(uint32_t ms) {
+uint32_t CLOCK::ms2ticks(uint32_t ms) {
   return ms * 32768/1000/(RTC.PER+1);
 }
 
-uint32_t SLEEP::ticks2ms(uint32_t ticks) {
+uint32_t CLOCK::ticks2ms(uint32_t ticks) {
   return (ticks * (RTC.PER+1)*1000)/32768;
 }
 
@@ -98,7 +98,7 @@ uint32_t SLEEP::ticks2ms(uint32_t ticks) {
  * precision: 1000*2^prescaler/32768
  * max      : 2^16*precision
  */
-void SLEEP::sleep_once(uint16_t per, uint16_t prescaler) {
+void CLOCK::sleep_once(uint16_t per, uint16_t prescaler) {
   _mode = SINGLE;
   // PORTA.OUTSET = PIN7_bm;
   _is_running = 0;
@@ -119,7 +119,7 @@ void SLEEP::sleep_once(uint16_t per, uint16_t prescaler) {
  * MSEC: 0.98ms - 64s
  * SEC : 1s     - 65535s
  */
-void SLEEP::sleep_once(uint16_t duration, Duration_type ms_or_s) {
+void CLOCK::sleep_once(uint16_t duration, Duration_type ms_or_s) {
   if (ms_or_s == MSEC) {
     sleep_once(((uint32_t)duration*1024)/1000, 5);
   } else if (ms_or_s == SEC) {
