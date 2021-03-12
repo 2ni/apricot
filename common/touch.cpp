@@ -4,10 +4,12 @@
 #include "uart.h"
 #include "mcu.h"
 
-TOUCH::TOUCH(pins_t *ipin, uint16_t low, uint16_t high) {
+TOUCH::TOUCH(pins_t *ipin, uint16_t low, uint16_t high, uint16_t idle) {
   pin = ipin;
-  uint16_t threshold = get_avg();
-  set_thresholds(threshold+low, threshold+high);
+  if (idle == 0) {
+    idle = get_avg();
+  }
+  set_thresholds(idle+low, idle+high);
 }
 
 void TOUCH::set_thresholds(uint16_t low, uint16_t high) {
