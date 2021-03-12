@@ -21,11 +21,13 @@
 
 class LORAWAN {
   public:
-    LORAWAN();
-    LORAWAN(uint8_t adaptive, uint8_t check_link_nth);
+    LORAWAN(uint8_t adaptive = 1, uint8_t check_link_nth = 0);
 
     // void     init(pins_t *cs = &pins_csrfm, pins_t *dio0 = &pins_dio0, pins_t *dio1 = &pins_dio1);
     uint8_t  init(pins_t *cs = &pins_csrfm);
+    uint8_t  init(Lora_session *ee_session);
+    uint8_t  init(pins_t *cs, Lora_session *i_ee_session);
+    uint8_t  has_session();
     void     reset_session();
     void     set_otaa(uint8_t *deveui, uint8_t *appeui, uint8_t *appkey);
     void     set_abp(uint8_t *devaddr, uint8_t *nwkskey, uint8_t *appskey, const uint16_t counter = 0);
@@ -41,6 +43,7 @@ class LORAWAN {
     uint8_t  get_next_frq_pos();
 
     Lora_session session;
+    Lora_session *ee_session;
     RFM95 rfm95;
 
     uint8_t  queue_cmd_tx[8] = {0};
@@ -48,12 +51,14 @@ class LORAWAN {
 
   private:
     Lora_otaa otaa = { .deveui={0}, .appeui={0}, .appkey={0}, .devnonce=0 };
+    void     _set_persistent(Lora_session *ee_session);
+    void     _persist_session();
+
     uint8_t  check_link_nth;
     uint8_t  adaptive; // if set ADR = adaptive datarate done by gateway
-    uint8_t  persist;  // if set sessions is saved in eeprom
+    uint8_t  persistent = 0;  // we can't test it pointer to EEMEM variable is set so we use a variable
     uint8_t  chmask_current_pos; // points to the current chmask bit used to select the frequency
 
-    void     send_join_request(uint8_t channel, uint8_t datarate);
     Status   decode_data_down(Packet *payload, Packet *rx_mac, uint8_t ack_requested = 0);
     Status   decode_join_accept();
     uint8_t  is_same(uint8_t *arr1, uint8_t *arr2, uint8_t len);

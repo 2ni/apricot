@@ -82,3 +82,11 @@ uint8_t pgm_read_byte(const uint8_t *elm) {
   return *elm;
 }
 
+/*
+ * override eeprom functions
+ */
+void eeprom_update_block (const void *__src, void *__dst, size_t __n) {
+}
+
+void eeprom_read_block (void *__dst, const void *__src, size_t __n) {
+}

@@ -3,19 +3,17 @@
  * - https://github.com/matthijskooijman/arduino-lmic
  *
  * TODOs
- * - setup gateway for v3
- * - peristent mode
+ * - make it work on ttn v3
  * - adaptive mode
  * - check cflist 8 vs 16 bit (downlink [8] should not be overwritten!
  * - rx window should start listening after 1sec + 1.5-2 symbols (symbol depending on datarate)
  * - maybe shorten timeout settings of rfm95
- * - test clock while sleeping and how to be able to sleep a certain amount of time
  * - packet with fixed max length data instead of pointer
- * - test on v3
  *
  */
 
 #include <avr/io.h>
+#include <avr/eeprom.h>
 #include <util/delay.h>
 #include "string.h"
 
@@ -58,13 +56,9 @@
  * if not received -> set txpower to default, then switch to next lower data rate
  * at the end rejoin
  */
-LORAWAN::LORAWAN() {
-  LORAWAN(1, 0);
-}
-
-LORAWAN::LORAWAN(uint8_t iadaptive, uint8_t i_check_link_nth) {
+LORAWAN::LORAWAN(uint8_t i_adaptive, uint8_t i_check_link_nth) {
+  adaptive = i_adaptive ? 1 : 0;
   check_link_nth = i_check_link_nth;
-  adaptive = iadaptive ? 1 : 0;
 }
 
 void LORAWAN::set_otaa(uint8_t *deveui, uint8_t *appeui, uint8_t *appkey) {
@@ -78,6 +72,29 @@ void LORAWAN::set_abp(uint8_t *devaddr, uint8_t *nwkskey, uint8_t *appskey, cons
   aes128_copy_array(session.nwkskey, nwkskey, 16);
   aes128_copy_array(session.appskey, appskey, 16);
   session.counter = counter;
+}
+
+void LORAWAN::_set_persistent(Lora_session *i_ee_session) {
+  persistent = 1;
+  ee_session = i_ee_session;
+
+  // read session from eeprom and keep if valid
+  eeprom_read_block(&session, ee_session, sizeof(session));
+  if (!has_session()) {
+    DL("no eeprom session");
+    reset_session();
+  }
+}
+
+void LORAWAN::_persist_session() {
+  if (persistent) {
+    DL("persisting session");
+    eeprom_update_block(&session, ee_session, sizeof(session));
+  }
+}
+
+uint8_t LORAWAN::has_session() {
+  return session.txdatarate != 0xff;
 }
 
 /*
@@ -105,7 +122,7 @@ void LORAWAN::reset_session() {
   }
 
   session.counter = 0;
-  session.txdatarate = 7;
+  session.txdatarate = 0xff; // invalid session
   session.rxdelay = 1;
   session.rxoffset = 0;
   session.rx2datarate = 9;
@@ -125,8 +142,8 @@ void LORAWAN::reset_session() {
 /*
  * to avoid tests blocking, this needs to be in a separate function
  * which must be called in the real programm but not in the test suite
+ * can't group it because pointer to EEMEM always returns NULL
  */
-// void LORAWAN::init(pins_t *cs, pins_t *dio0, pins_t *dio1) {
 uint8_t LORAWAN::init(pins_t *cs) {
   // RFM95 rfm95(cs, dio0, dio1);
   RFM95 rfm95(cs);
@@ -141,6 +158,18 @@ uint8_t LORAWAN::init(pins_t *cs) {
     DF("RFM95 version: 0x%02x\n", version);
     return OK;
   }
+}
+
+uint8_t LORAWAN::init(Lora_session *i_ee_session) {
+  uint8_t status = init(&pins_csrfm);
+  _set_persistent(i_ee_session);
+  return status;
+}
+
+uint8_t LORAWAN::init(pins_t *cs, Lora_session *i_ee_session) {
+  uint8_t status = init(&pins_csrfm);
+  _set_persistent(i_ee_session);
+  return status;
 }
 
 /*
@@ -167,6 +196,7 @@ uint8_t LORAWAN::init(pins_t *cs) {
  */
 Status LORAWAN::join(uint8_t wholescan) {
   reset_session();
+  _persist_session(); // invalidate session (txdatarate = 0xff with reset_session)
 
   uint8_t tx_frq_pos = 0;
   uint8_t tx_datarate = 7;
@@ -242,6 +272,7 @@ Status LORAWAN::join(uint8_t wholescan) {
       if (valid_lora) {
         DF(OK("(%lu) RX1 success") "\n", clock.current_tick);
         if (!wholescan) {
+          _persist_session();
           return OK;
         }
       } else {
@@ -263,6 +294,7 @@ Status LORAWAN::join(uint8_t wholescan) {
     if (valid_lora) {
       DF(OK("(%lu) RX2 success") "\n", clock.current_tick);
       if (!wholescan) {
+        _persist_session();
         return OK;
       }
     } else {
@@ -333,6 +365,7 @@ Status LORAWAN::send(const Packet *payload, Packet *rx_payload, const uint8_t da
   uint32_t tx_tick;
   rfm95.send(&lora, session.frequencies[tx_frq_pos], tx_datarate, session.txpower, &tx_tick);
   session.counter++;
+  _persist_session();
   DF("(%lu) package sent %lu SF%u\n", tx_tick, session.frequencies[tx_frq_pos], tx_datarate);
 
   uint8_t rx_frq_pos = tx_frq_pos;
@@ -658,39 +691,6 @@ Status LORAWAN::decode_join_accept() {
     session.chmask = 0xff;
   }
   return OK;
-}
-
-void LORAWAN::send_join_request(uint8_t frq_pos, uint8_t datarate) {
-  uint8_t len = 23; // mhrd(1) + appeui(8) + deveui(8) + devnonce(2) + mic(4)
-  uint8_t data[len];
-  memset(data, 0, len);
-  Packet join = { .data=data, .len=len };
-
-  join.data[0] = 0x00; // mac_header (mtype 000: join request)
-
-  for (uint8_t i=0; i<8; i++) {
-    join.data[1+i] = otaa.appeui[7-i];
-  }
-
-  for (uint8_t i=0; i<8; i++) {
-    join.data[9+i] = otaa.deveui[7-i];
-  }
-
-  join.data[17] = (otaa.devnonce & 0x00FF);
-  join.data[18] = ((otaa.devnonce >> 8) & 0x00FF);
-
-  // uart_arr(WARN("pkg join"), join.data, join.len);
-
-  join.len -= 4; // ignore mic
-  uint8_t datam[4] = {0};
-  Packet mic = { .data=datam, .len=4 };
-  aes128_mic(otaa.appkey, &join, &mic); // len without mic
-  join.len += 4;
-  for (uint8_t i=0; i<4; i++) {
-    join.data[join.len-4+i] = mic.data[i];
-  }
-
-  rfm95.send(&join, session.frequencies[frq_pos], datarate, session.txpower);
 }
 
 /*

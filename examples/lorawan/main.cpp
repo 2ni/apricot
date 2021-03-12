@@ -27,25 +27,23 @@ ISL29035 isl;
 uint8_t is_seated = 0;
 uint32_t start_tick = 0;
 
-uint8_t  EEMEM ee_have_session;
 Lora_session EEMEM ee_session;
-uint8_t have_session;
 
-void print_session() {
-  uart_arr("nwkskey", lora.session.nwkskey, 16);
-  uart_arr("appskey", lora.session.appskey, 16);
-  uart_arr("devaddr", lora.session.devaddr, 4);
-  DF("counter      : %u\n", lora.session.counter);
-  DF("tx datarate  : %u\n", lora.session.txdatarate);
-  DF("rx delay     : %u\n", lora.session.rxdelay);
-  DF("rx offset    : %u\n", lora.session.rxoffset);
-  DF("rx2 datarate : %u\n", lora.session.rx2datarate);
-  DF("tx power     : %u\n", lora.session.txpower);
-  DF("chmask       : 0x%02x\n", lora.session.chmask);
+void print_session(Lora_session *session) {
+  uart_arr("nwkskey", session->nwkskey, 16);
+  uart_arr("appskey", session->appskey, 16);
+  uart_arr("devaddr", session->devaddr, 4);
+  DF("counter      : %u\n", session->counter);
+  DF("tx datarate  : %u\n", session->txdatarate);
+  DF("rx delay     : %u\n", session->rxdelay);
+  DF("rx offset    : %u\n", session->rxoffset);
+  DF("rx2 datarate : %u\n", session->rx2datarate);
+  DF("tx power     : %u\n", session->txpower);
+  DF("chmask       : 0x%02x\n", session->chmask);
   D("frequencies  : ");
   for (uint8_t i=0; i<8; i++) {
-    if ((lora.session.chmask>>i) & 0x01) {
-      DF("%lu, ", lora.session.frequencies[i]);
+    if ((session->chmask>>i) & 0x01) {
+      DF("%lu, ", session->frequencies[i]);
     }
   }
   DL("");
@@ -56,14 +54,8 @@ void join() {
   extern uint8_t APPEUI[8];
   extern uint8_t APPKEY[16];
   lora.set_otaa(DEVEUI, APPEUI, APPKEY);
-  eeprom_update_byte(&ee_have_session, 0); // delete session
 
-  if (lora.join() == OK) {
-    have_session = 1;
-    eeprom_update_byte(&ee_have_session, 23);
-    eeprom_update_block(&lora.session, &ee_session, sizeof(lora.session));
-    print_session();
-  } else {
+  if (lora.join() != OK) {
     DL("join failed");
     while (1);
   }
@@ -133,27 +125,21 @@ int main(void) {
   }
   isl.set_ranges(1, 1); // 4000Lux, 12bit
 
-  lora.init();
+  lora.init(&ee_session); // persist session
 
   TOUCH button(&PB7);
-
-  uint8_t have_session = eeprom_read_byte(&ee_have_session) == 23 ? 1 : 0;
-  if (have_session) {
-    DL("load session from eeprom");
-    eeprom_read_block(&lora.session, &ee_session, sizeof(lora.session));
-    print_session();
-  }
 
 #ifdef OTAA
   uint32_t last_join_tick = 0;
   uint32_t last_data_tick = 0;
   uint8_t enforce = 0;
 
-  if (!have_session) {
+  if (!lora.has_session()) {
     join();
     last_join_tick = clock.current_tick;
     enforce = 1;
   }
+  print_session(&lora.session);
 
   while (1) {
     button.is_pressed(&callback_button);
@@ -162,6 +148,7 @@ int main(void) {
     if (clock.current_tick >= (last_join_tick + 29491200)) {
       last_join_tick = clock.current_tick;
       join();
+      print_session(&lora.session);
       enforce = 1;
     }
 
@@ -182,32 +169,26 @@ int main(void) {
   lora.session.frequencies[5] = 8675000;
   lora.session.frequencies[6] = 8677000;
   lora.session.frequencies[7] = 8679000;
-  DF("session: %u\n", have_session);
-  if (!have_session) {
+  if (!lora.has_session()) {
+    lora.session.txdatarate = 7; // we need to overwrite it, as by default it's 0xff to detect an invalid session
     extern uint8_t DEVADDR[4];
     extern uint8_t NWKSKEY[16];
     extern uint8_t APPSKEY[16];
     lora.set_abp(DEVADDR, NWKSKEY, APPSKEY);
-    eeprom_update_byte(&ee_have_session, 23);
     eeprom_update_block(&lora.session, &ee_session, sizeof(lora.session));
-  } else {
-    eeprom_read_block(&lora.session, &ee_session, sizeof(lora.session));
   }
+  print_session(&lora.session);
 
   /*
   lora.send(&payload, NULL, 7, 0); // manually set datarate
   eeprom_update_word(&ee_session.counter, lora.session.counter);
   */
 
-  if (!have_session) print_session();
-
   while (1) {
     button.is_pressed(&callback_button);
 
     clock.sleep_for(205); // 8/32768*1000*205 = 50.048828125ms
-
   }
 #endif
 
 }
-
