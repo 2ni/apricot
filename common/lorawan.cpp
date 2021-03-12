@@ -309,7 +309,7 @@ Status LORAWAN::join(uint8_t wholescan) {
       // DL(NOK("timeout!"));
       // TODO sleep 15sec, 30sec, 1min, 5min, 30min, 60min (repeat)
       // https://lora-developers.semtech.com/library/tech-papers-and-guides/the-book/joining-and-rejoining/
-      uint8_t sleep_time = wholescan ? 5 : (uint8_t)(join.data[join.len-1]&0x07)*4; // pseudo random, taking 3 lsb from last byte of join
+      uint8_t sleep_time = wholescan ? 5 : (uint8_t)(join.data[join.len-1]&0x07)*4+5; // pseudo random, taking 3 lsb from last byte of join, min 5sec
       DF("sleeping: %us\n", sleep_time);
       clock.sleep_for((uint32_t)sleep_time * TICKS_PER_SEC); // sleep random time 5-37sec
     }
