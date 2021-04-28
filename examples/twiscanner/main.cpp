@@ -45,7 +45,7 @@ int main(void) {
     uart_u2c(out, raw, 2);
     DF("humidity: %s%%\n", out);
   } else {
-    DF("error: %u\n", status);
+    DF(NOK("sensor SHT20 not found:") " %u\n", status);
   }
 
 }
