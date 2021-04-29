@@ -10,11 +10,13 @@ void mcu_init() {
   _PROTECTED_WRITE(CLKCTRL.MCLKCTRLB, CLKCTRL_PDIV_2X_gc | CLKCTRL_PEN_bm);
 
   // use external crystal as clock (for RTC). Run in standby
+#ifdef __AVR_ATtiny3217__
   _PROTECTED_WRITE(CLKCTRL.XOSC32KCTRLA, CLKCTRL_ENABLE_bm | CLKCTRL_RUNSTDBY_bm);
   while (CLKCTRL.MCLKSTATUS & CLKCTRL_XOSC32KS_bm);
 
   // set alternative pins for uart and spi
   PORTMUX.CTRLB = PORTMUX_USART0_ALTERNATE_gc | PORTMUX_SPI0_ALTERNATE_gc;
+#endif
 
   // sleep command puts mcu in standby (idle, standby, power down)
   SLPCTRL.CTRLA = (SLPCTRL_SMODE_STDBY_gc | SLPCTRL_SEN_bm);
@@ -40,11 +42,15 @@ void mcu_init() {
  */
 uint16_t get_vin() {
   pins_vin.port_adc->CTRLC = ADC_PRESC_DIV128_gc | ADC_REFSEL_INTREF_gc | (0<<ADC_SAMPCAP_bp);
+#ifdef __AVR_ATtiny3217__
   if  (pins_vin.port_adc == &ADC0) {
     VREF.CTRLA = VREF_ADC1REFSEL_1V1_gc; // ADC0 refers to VREF.CTRLA
   } else {
     VREF.CTRLC = VREF_ADC1REFSEL_1V1_gc; // ADC1 refers to VREF.CTRLC
   }
+#elif defined(__AVR_ATtiny1604__)
+  VREF.CTRLA = VREF_ADC0REFSEL_1V1_gc;
+#endif
 
   uint16_t adc = 0;
   for (uint8_t i=0; i<4; i++) {

@@ -11,7 +11,7 @@ MOCKS      = ./mocks
 FLAGS      = -DDEBUG -std=c++11 -Wno-format # ignore lu warnings as different sizes
 CPPFLAGS   =
 
-CFLAGS     = -DF_CPU=$(CLK) $(FLAGS) -I $(MOCKS) -I $(COMMONDIR)
+CFLAGS     = -DF_CPU=$(CLK) -D__AVR_ATtiny3217__=attiny3217 $(FLAGS) -I $(MOCKS) -I $(COMMONDIR)
 
 # ********************************************************
 

@@ -11,7 +11,7 @@
 .PHONY: all clean tests
 
 PRJ        = main
-DEVICE     = attiny3217
+DEVICE     = $(shell if [ ! -z $(mcu) ]; then echo $(mcu); else echo attiny3217; fi)
 DEVICE_PY  = $(shell echo $(DEVICE) | sed -e 's/^.*\(tiny\d*\)/\1/')
 # default prescaler is 6 -> 3.3MHz
 # max frequency is 13.3MHz for 3.3v (see p.554)
@@ -27,7 +27,7 @@ EFU        = 0xFF
 SRC        = ./src
 EXT        =
 COMMON     = ./common
-EXCLUDE    = sleep.cpp
+EXCLUDE    = timer.cpp
 
 FLAGS      = -DDEBUG -std=c++11 # avoid warning "non-static data member initializers"
 CPPFLAGS   =
@@ -122,6 +122,7 @@ writefuse:
 
 # flash hex to mcu
 # port can be overruled with: make flash port=1
+# mcu can be overruled with: make flash mcu=attiny1604
 flash: all
 	@echo "flashing to $(PORT). Pls wait..."
 	@$(PYUPDI) -f $(PRJ).hex && echo "done." && echo "\a" && $(MAKE) serial  port=$(PORT) # && afplay /System/Library/Sounds/Ping.aiff -v 10
