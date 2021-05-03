@@ -14,6 +14,7 @@ from datetime import datetime as dt
 import sys
 import re
 import math
+from pynput import keyboard
 
 parser = argparse.ArgumentParser(description='simpler serial port listener', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-p', '--port', type=str, default='', required=True, help='give port to listen from, eg "/dev/cu.[wch]usbserial1410" or "1"')
@@ -50,6 +51,25 @@ client.open()
 start = dt.now()
 last = start
 timestampAbsolute = False
+
+
+# keyboard listener see
+# https://stackoverflow.com/questions/11918999/key-listeners-in-python#answer-43106497
+def on_press(key):
+    try:
+        k = key.char  # single-char keys
+        # print("single" + k)
+        client.write(k.encode())
+    except:
+        k = key.name  # other keys
+        # print("other" + k)
+        if k == "enter":
+            client.write("\n".encode())
+
+
+listener = keyboard.Listener(on_press=on_press)
+listener.start()
+
 try:
     while True:
         data = client.read()

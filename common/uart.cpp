@@ -12,16 +12,30 @@
 #include <stdint.h>
 #include <avr/io.h>
 #include <util/delay.h>
+#include <avr/interrupt.h>
 #include "uart.h"
+
+#include "pins.h"
+
+/*
+ * the ISR needs to be setup in the main code for now
+ *
+ISR(USART0_RXC_vect) {
+  uint8_t in = USART0.RXDATAL;
+  pins_flash(&pins_led, 1, 100);
+}
+*/
 
 /*
  * setup uart and tx pin
  */
 void uart_init(void) {
   USART0.BAUD = (uint16_t)USART_BAUD_RATE(USART_BPS);
-  USART0.CTRLB |= USART_TXEN_bm;  // enable TX for now
+  USART0.CTRLB = USART_TXEN_bm | USART_RXEN_bm;  // enable TX and RX
+  USART0.CTRLA = USART_RXCIE_bm; // enable RX interrupt
   USART_PORT.DIRSET = USART_TX;
-  _delay_ms(100);
+  USART_PORT.DIRCLR = USART_RX;
+  _delay_ms(500); // the key listener needs some time to start
 
   // see https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences for colors
   DF("\033[1;38;5;18;48;5;226m Hello from 0x%06lX \033[0m\n", get_deviceid());

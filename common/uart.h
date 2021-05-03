@@ -16,12 +16,19 @@
 
 #define USART_BPS   19200
 #define USART_BAUD_RATE(BAUD_RATE) ((float)(10000000 * 64 / (16 * (float)BAUD_RATE)) + 0.5)
+
 #ifdef __AVR_ATtiny3217__
-#define USART_TX PIN1_bm
+
 #define USART_PORT PORTA
+#define USART_TX PIN1_bm
+#define USART_RX PIN2_bm
+
 #elif defined(__AVR_ATtiny1604__)
-#define USART_TX PIN2_bm
+
 #define USART_PORT PORTB
+#define USART_TX PIN2_bm
+#define USART_RX PIN3_bm
+
 #endif
 
 // DEBUG set in Makefile

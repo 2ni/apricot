@@ -2,3 +2,4 @@ pySerial
 pycryptodome
 paho-mqtt
 python-dateutil
+pynput
