@@ -1,0 +1,35 @@
+diff --git a/updi/physical.py b/updi/physical.py
+index 96be64b..d9360bf 100644
+--- a/updi/physical.py
++++ b/updi/physical.py
+@@ -31,7 +31,15 @@ class UpdiPhysical(object):
+             Standard COM port initialisation
+         """
+         self.logger.info("Opening {} at {} baud".format(port, baud))
+-        self.ser = serial.Serial(port, baud, parity=serial.PARITY_EVEN, timeout=1, stopbits=serial.STOPBITS_TWO)
++        self.ser = serial.serial_for_url(port, baud, parity=serial.PARITY_EVEN, timeout=1, stopbits=serial.STOPBITS_TWO, rtscts=False, dsrdtr=False, do_not_open=True)
++        self.ser.rts = 0  # needed so dtr reall gets 0v
++        self.ser.dtr = 1
++
++        self.ser.open()
++        # dtr is only set when port is opened, and stable low after ~3ms.
++        # during that time some crap from uart can come in, which disturbs the updi communication
++        time.sleep(.01)
++        self.ser.flushInput()
+ 
+     def _loginfo(self, msg, data):
+         if data and isinstance(data[0], str):
+@@ -56,7 +64,12 @@ class UpdiPhysical(object):
+         # Which is slightly above the recommended 24.6ms
+         self.ser.close()
+ 
+-        temporary_serial = serial.Serial(self.port, 300, stopbits=serial.STOPBITS_ONE, timeout=1)
++        temporary_serial = serial.serial_for_url(self.port, 300, timeout=1, stopbits=serial.STOPBITS_ONE, rtscts=False, dsrdtr=False, do_not_open=True)
++        temporary_serial.rts = 0  # needed so dtr reall gets 0v
++        temporary_serial.dtr = 1
++        temporary_serial.open()
++        time.sleep(.01)
++        temporary_serial.flushInput()
+ 
+         # Send two break characters, with 1 stop bit in between
+         temporary_serial.write([constants.UPDI_BREAK, constants.UPDI_BREAK])
