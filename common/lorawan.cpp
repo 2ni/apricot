@@ -1,6 +1,17 @@
 /*
  * resources:
- * - https://github.com/matthijskooijman/arduino-lmic
+ * https://github.com/matthijskooijman/arduino-lmic
+ * https://lora-developers.semtech.com/library/tech-papers-and-guides/the-book/joining-and-rejoining/
+ * https://www.alanzucconi.com/2017/03/13/positioning-and-trilateration/
+ * https://hackmd.io/@hVCY-lCeTGeM0rEcouirxQ/S1kg6Ymo-?type=view
+ *
+ * https://eu1.cloud.thethings.network/
+ * https://www.thethingsindustries.com/docs/download/
+ * https://www.thethingsnetwork.org/docs/the-things-stack/index.html
+ * https://www.thethingsindustries.com/docs/gateways/multitechconduit/
+ * https://www.thethingsindustries.com/docs/gateways/multitechconduit/lbs/
+ *
+ *
  *
  * TODOs
  * - make it work on ttn v3
@@ -86,9 +97,30 @@ void LORAWAN::_set_persistent(Lora_session *i_ee_session) {
   }
 }
 
+void LORAWAN::print_session() {
+  uart_arr("nwkskey", session.nwkskey, 16);
+  uart_arr("appskey", session.appskey, 16);
+  uart_arr("devaddr", session.devaddr, 4);
+  DF("counter      : %u\n", session.counter);
+  DF("tx datarate  : %u\n", session.txdatarate);
+  DF("rx delay     : %u\n", session.rxdelay);
+  DF("rx offset    : %u\n", session.rxoffset);
+  DF("rx2 datarate : %u\n", session.rx2datarate);
+  DF("tx power     : %u\n", session.txpower);
+  DF("chmask       : 0x%02x\n", session.chmask);
+  D("frequencies  : ");
+  for (uint8_t i=0; i<8; i++) {
+    if ((session.chmask>>i) & 0x01) {
+      DF("%lu, ", session.frequencies[i]);
+    }
+  }
+  DL("");
+}
+
 void LORAWAN::_persist_session() {
   if (persistent) {
     DL("persisting session");
+    print_session();
     eeprom_update_block(&session, ee_session, sizeof(session));
   }
 }
@@ -438,10 +470,12 @@ void LORAWAN::process_cmds(Packet *cmds) {
   uint8_t p=0; // TODO p and queue_p should be reset when sent
   queue_p = 0;
   uint8_t cmd;
+  uint8_t session_has_changed = 0;
 
   while (p<cmds->len) {
     cmd = cmds->data[p];
     uint8_t response = 0;
+    // datarate[7:4] txpower[3:0] | CHMask(2) | RFU[7] CHMaskCntl[6:4] NbTrans[3:0]
     if (cmd == LORA_MAC_LINKADR) {
       // TODO Nbtrans not yet implemented
       uint8_t datarate = cmds->data[p+1] >> 4;   // convert to SF7-12. DR0=SF12, DR5=SF7
@@ -449,12 +483,15 @@ void LORAWAN::process_cmds(Packet *cmds) {
       uint8_t redundancy = cmds->data[p+4];
       uint8_t chmaskcntl = (redundancy&~0x80)>>4;
 
-      if (chmaskcntl&0x01) { // bit 0 and 6 set
-        session.chmask = (chmaskcntl&0x40) ? 0xff : 0x00;
-      } else {
-        session.chmask = (cmds->data[p+2]<<8) | cmds->data[p+3]; //bit 0: channel 1, bit 2: channel 2, ... bit 15: channel 16
+      // accept chmask settings only if no bit except 1, 6 of chmaskcntl is set (regional parameters p.27 2.4.5. LinkAdrReq Command)
+      if (!(chmaskcntl & ~((1<<0) | (1<<6)))) {
+        if (chmaskcntl & (1<<6)) {
+          session.chmask = 0xff;
+        } else {
+          session.chmask = (cmds->data[p+3]<<8) | cmds->data[p+2]; //bit 0: channel 1, bit 2: channel 2, ... bit 15: channel 16
+        }
+        response |= 0x01; // ChannelMaskACK
       }
-      response |= 0x01; // ChannelMaskACK
 
       if (datarate != 0x0f && datarate <= 5) {
         session.txdatarate = 12 - datarate;     // convert to SF7-12. DR0=SF12, DR5=SF7
@@ -466,7 +503,8 @@ void LORAWAN::process_cmds(Packet *cmds) {
         response |= 0x04; // PowerACK
       }
       queue_cmd_tx[queue_p++] = LORA_MAC_LINKADR;
-      queue_cmd_tx[queue_p++] = 0x07; // PowerACK | DataRateACK | ChannelMaskACK
+      queue_cmd_tx[queue_p++] = response; // PowerACK | DataRateACK | ChannelMaskACK
+      session_has_changed = response;
       p += 4; // data is 4 bits
     } else if (cmd == LORA_MAC_DUTYCYCLE) {
       // TODO not implemented so do not respond to it
@@ -479,18 +517,20 @@ void LORAWAN::process_cmds(Packet *cmds) {
       // TODO frequency same as NEWCHANNEL command
       queue_cmd_tx[queue_p++] = LORA_MAC_RXPARAM;
       queue_cmd_tx[queue_p++] = 0x06; // RX1DROffsetACK ] RX2DataRateACK | ~ChannelACK
+      session_has_changed = 1;
       p += 4;
     } else if (cmd == LORA_MAC_DEVSTATUS) {
       // TODO not implemented do not respond to it (needs to calculate and save SNR)
       p += 0; // no payload
     } else if (cmd == LORA_MAC_NEWCHANNEL) {
-      // TODO needs to save 16 frequencies in session and have set_channel in lorawan instead of rfm95
       queue_cmd_tx[queue_p++] = LORA_MAC_DEVSTATUS;
       queue_cmd_tx[queue_p++] = 0x00;
+      session_has_changed = 1;
       p += 5;
     } else if (cmd == LORA_MAC_RXTIMING) {
       session.rxdelay = cmds->data[p+1] & 0x0f;
       queue_cmd_tx[queue_p++] = LORA_MAC_RXTIMING; // TODO should be added to upload data until download received from enddevice
+      session_has_changed = 1;
       p += 1;
     } else if (cmd == LORA_MAC_TXPARAM) {
       p += 1;
@@ -503,6 +543,10 @@ void LORAWAN::process_cmds(Packet *cmds) {
     }
 
     p +=1; // get next command
+  }
+
+  if (session_has_changed) {
+    _persist_session();
   }
 }
 

@@ -29,6 +29,7 @@ class LORAWAN {
     uint8_t  init(pins_t *cs, Lora_session *i_ee_session);
     uint8_t  has_session();
     void     reset_session();
+    void     print_session();
     void     set_otaa(uint8_t *deveui, uint8_t *appeui, uint8_t *appkey);
     void     set_abp(uint8_t *devaddr, uint8_t *nwkskey, uint8_t *appskey, const uint16_t counter = 0);
     Status   join(uint8_t wholescan=0);
