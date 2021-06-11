@@ -32,7 +32,7 @@ int main(void) {
     led_is_on = PORTB.IN & PIN5_bm;
     DF("blink: 0x%02x\n", led_is_on);
     PORTB.PIN5CTRL = PORT_ISC_INPUT_DISABLE_gc;
-    clock.sleep_for(led_is_on ? 4096 : 20480);
+    clock.sleep_for(led_is_on ? 4096 : 20480); // 1sec : 5sec
     PORTB.PIN5CTRL = 0;
     PORTB.OUTTGL = PIN5_bm;
   }

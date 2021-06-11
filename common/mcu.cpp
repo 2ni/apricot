@@ -5,7 +5,7 @@
 
 CLOCK clock;
 
-void mcu_init() {
+void mcu_init(uint8_t enable_rx) {
   // set prescaler to 2 for 10MHz which is suitable for 3.3v
   _PROTECTED_WRITE(CLKCTRL.MCLKCTRLB, CLKCTRL_PDIV_2X_gc | CLKCTRL_PEN_bm);
 
@@ -16,6 +16,10 @@ void mcu_init() {
 
   // set alternative pins for uart and spi
   PORTMUX.CTRLB = PORTMUX_USART0_ALTERNATE_gc | PORTMUX_SPI0_ALTERNATE_gc;
+
+#elif defined(__AVR_ATtiny1604__)
+  // set alternative pins for uart
+  PORTMUX.CTRLB = PORTMUX_USART0_ALTERNATE_gc;
 #endif
 
   // sleep command puts mcu in standby (idle, standby, power down)
@@ -25,7 +29,7 @@ void mcu_init() {
   clock.init();
 
   // init uart for debugging
-  uart_init();
+  uart_init(enable_rx);
 
   // flash led
   pins_flash(&pins_led);

@@ -53,6 +53,7 @@ void STEPPER::stop() {
   pins_set(INA2, 0);
   pins_set(INB1, 0);
   pins_set(INB2, 0);
+  force_stop = 1;
 }
 
 void STEPPER::move_one_step(int8_t direction) {
@@ -64,11 +65,12 @@ void STEPPER::move_one_step(int8_t direction) {
 }
 
 void STEPPER::move(int16_t steps, uint8_t speed) {
+  force_stop = 0;
   uint16_t steps_left = steps >= 0 ? steps: -steps;
-  while (steps_left) {
+  while (steps_left && !force_stop) {
     move_one_step(steps >= 0 ? 1 : -1);
     steps_left--;
-    _delay_ms(2);
+    _delay_ms(1);
   }
   stop();
 }

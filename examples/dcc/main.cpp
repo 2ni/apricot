@@ -1,7 +1,9 @@
 #include <avr/interrupt.h>
 #include <avr/io.h>
+#include <util/delay.h>
 #include "uart.h"
 #include "mcu.h"
+#include "pins.h"
 
 volatile uint8_t done = 0;
 
@@ -81,7 +83,33 @@ void track_switch(uint16_t addr, uint8_t local_addr, uint8_t output) {
 
 int main(void) {
   mcu_init();
-  PORTA.DIRSET = PIN7_bm;
+
+  pins_t L = PB7;
+  pins_t R = PB6;
+
+  pins_output(&L, 1);
+  pins_output(&R, 1);
+
+  uint8_t out = 0;
+  uint8_t led_count = 0;
+  uint8_t delay = 50;
+  while (1) {
+    pins_set(&L, out);
+    pins_set(&R, !out);
+
+    out = !out;
+    if (led_count == (500/delay)) {
+      DL("blink");
+      pins_toggle(&pins_led);
+      led_count = 0;
+    } else {
+      led_count++;
+    }
+
+    _delay_ms(delay);
+  }
+
+  // TODO replace with R, L: PORTA.DIRSET = PIN7_bm;
 
   timer_init();
 

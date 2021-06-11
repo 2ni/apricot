@@ -43,7 +43,11 @@ void CLOCK::init(uint16_t per) {
   while (RTC.STATUS >0);
 
   RTC.PER = per;
+#ifdef __AVR_ATtiny3217__
   RTC.CLKSEL = RTC_CLKSEL_TOSC32K_gc; // external 32.768kHz
+#elif defined(__AVR_ATtiny1604__)
+  RTC.CLKSEL = RTC_CLKSEL_INT32K_gc; // internal 32.768kHz
+#endif
   RTC.INTCTRL =  RTC_OVF_bm;
   RTC.CNT = 0;
   RTC.CTRLA = RTC_PRESCALER_DIV1_gc | RTC_RTCEN_bm | RTC_RUNSTDBY_bm;

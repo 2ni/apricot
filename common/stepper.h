@@ -13,13 +13,15 @@ class STEPPER {
     void init(pins_t *INA1, pins_t *INA2, pins_t *INB1, pins_t *INB2);
     void set_step(uint8_t step);
     void stop();
-    void move_one_step(int8_t direction);
     void move(int16_t steps, uint8_t speed);
 
 
   private:
+    void move_one_step(int8_t direction);
+
     int8_t current_step;
     int8_t direction;
+    uint8_t force_stop;
     pins_t *INA1, *INA2, *INB1, *INB2;
 };
 

@@ -31,8 +31,10 @@ Test_Result tests_mac() {
   // LORA_MAC_RXPARAM: RX2DataRate SF8, RX1DROffset 2, no frq (not implemented)
   //   RX1DROffset[6:4]
   //   RX2DataRate[3:0]
+  //
+  //   real example linkadr: 03 51 ff 00 01
   const uint8_t rx_cmds_l = 12;
-  uint8_t rx_cmds_d[rx_cmds_l] = { LORA_MAC_LINKADR, 0x33, 0x00, 0xff, 0x01, LORA_MAC_DUTYCYCLE, 0x01, LORA_MAC_RXPARAM, 0x24, 0x00, 0x00, 0x00};
+  uint8_t rx_cmds_d[rx_cmds_l] = { LORA_MAC_LINKADR, 0x33, 0xff, 0x00, 0x01, LORA_MAC_DUTYCYCLE, 0x01, LORA_MAC_RXPARAM, 0x24, 0x00, 0x00, 0x00};
   Packet rx_cmds = { .data=rx_cmds_d, .len=rx_cmds_l };
   lora_obj.process_cmds(&rx_cmds);
 

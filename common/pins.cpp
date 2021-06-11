@@ -21,7 +21,10 @@ pins_t PB7 = { .port = &PORTB, .pin = 7, .port_adc = &ADC1, .pin_adc = 4 };
 pins_t pins_vin = PB4;
 pins_t pins_led = PB5;
 #elif defined(__AVR_ATtiny1604__)
-pins_t pins_led = PB1;
+pins_t PB2 = { .port = &PORTB, .pin = 2 };
+pins_t PB3 = { .port = &PORTB, .pin = 3 };
+
+pins_t pins_led = PA4;
 #endif
 
 #ifdef __AVR_ATtiny3217__

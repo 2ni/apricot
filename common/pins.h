@@ -12,6 +12,9 @@ typedef struct {
 
 extern pins_t PA1, PA2, PA3, PA4, PA5, PA6, PA7;
 extern pins_t PB0, PB1, PB4, PB5, PB6, PB7, pins_scl, pins_sda, pins_vin, pins_led;
+#ifdef __AVR_ATtiny1604__
+extern pins_t PB2, PB3;
+#endif
 extern pins_t PC0, PC1, PC2, PC3, PC4, PC5, pins_sck, pins_miso, pins_mosi;
 extern pins_t pins_csrfm, pins_dio0, pins_dio1;
 
