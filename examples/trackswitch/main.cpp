@@ -15,17 +15,25 @@
 
 STEPPER stepper;
 
-int8_t direction = 0;
-int8_t warn = 0;
+int16_t direction = 0;
+volatile uint8_t warn = 0;
+volatile uint8_t limit_reached = 0;
+uint8_t speed = 5;
 
 ISR(USART0_RXC_vect) {
   uint8_t in = USART0.RXDATAL;
   switch (in) {
-    case 'r':
-      direction = 1;
+    case 'y':
+      direction = -100;
       break;
-    case 'l':
-      direction = -1;
+    case '.':
+      direction = 100;
+      break;
+    case '<':
+      direction = -1000;
+      break;
+    case '-':
+      direction = 1000;
       break;
     case '\n':
       pins_flash(&pins_led, 1, 100);
@@ -38,14 +46,23 @@ ISR(PORTA_PORT_vect) {
   PORTA.INTFLAGS = flags; // clear flags
 
   // DCC input
-  if (flags & PORT_INT3_bm) {
+  if (flags & PORT_INT5_bm) {
     warn = 1;
   }
+}
+
+ISR(PORTB_PORT_vect) {
+  uint8_t flags = PORTB.INTFLAGS;
+  PORTB.INTFLAGS = flags; // clear flags
 
   // stepper limits
-  if (flags & (PORT_INT1_bm | PORT_INT2_bm)) {
-    stepper.stop();
+  if (flags & (PORT_INT1_bm | PORT_INT0_bm)) {
+    limit_reached = 1;
   }
+}
+
+void stopped() {
+  pins_set(&pins_led, 0);
 }
 
 /*
@@ -74,6 +91,15 @@ int main(void) {
 
   stepper.init(&INA1, &INA2, &INB1, &INB2);
 
+  // set to left position if unknown at start
+  if (pins_get(&LIMIT1) && pins_get(&LIMIT2)) {
+    DL("move to home");
+    stepper.move(-1000, speed);
+    while (pins_get(&LIMIT1)) {
+      stepper.loop();
+    }
+  }
+
   while (1) {
     if (warn) {
       DF("clock: %lu\n", clock.current_tick);
@@ -81,13 +107,24 @@ int main(void) {
       warn = 0;
     }
 
-    if (direction == -1 || direction == 1) {
-      int16_t m = 100 * direction;
-      DF("move: %i\n", m);
-      // pins_set(&pins_led, 1);
-      stepper.move(m, 0);
-      // pins_set(&pins_led, 0);
+    if (limit_reached) {
+      stepper.stop();
+      pins_set(&pins_led, 0);
+      limit_reached = 0;
+    }
+
+    if (direction != 0) {
+      // stop on limits
+      if (((!pins_get(&LIMIT1) && direction < 0) || (!pins_get(&LIMIT2) && direction > 0))) {
+        continue;
+      }
+
+      DF("move: %i\n", direction);
+      pins_set(&pins_led, 1);
+      stepper.move(direction, speed); // 30 ticks = 1ms
       direction = 0;
     }
+
+    stepper.loop(&stopped);
   }
 }

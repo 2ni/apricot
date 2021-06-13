@@ -17,6 +17,7 @@ void STEPPER::init(pins_t *iINA1, pins_t *iINA2, pins_t *iINB1, pins_t *iINB2) {
 
   direction = 0;
   current_step = 0;
+  steps_left = 0;
 }
 
 void STEPPER::set_step(uint8_t step) {
@@ -54,6 +55,7 @@ void STEPPER::stop() {
   pins_set(INB1, 0);
   pins_set(INB2, 0);
   force_stop = 1;
+  steps_left = 0;
 }
 
 void STEPPER::move_one_step(int8_t direction) {
@@ -64,7 +66,11 @@ void STEPPER::move_one_step(int8_t direction) {
   set_step(current_step);
 }
 
-void STEPPER::move(int16_t steps, uint8_t speed) {
+/*
+ * if stop() called in ISR and stepper is on th move
+ * it'll set force_stop = 1 and stop it
+ */
+void STEPPER::move_blocking(int16_t steps, uint8_t speed) {
   force_stop = 0;
   uint16_t steps_left = steps >= 0 ? steps: -steps;
   while (steps_left && !force_stop) {
@@ -73,4 +79,29 @@ void STEPPER::move(int16_t steps, uint8_t speed) {
     _delay_ms(1);
   }
   stop();
+}
+
+/*
+ * speed is given in number of ticks,
+ * ie amount of time to wait between the moves
+ * eg delay 1ms with 1 tick = 1/32768 = 30.6us -> set speed = 30
+ */
+void STEPPER::move(int16_t steps, uint8_t speed) {
+  steps_left = steps;
+  this->speed = speed;
+  last_move_tick = clock.current_tick;
+}
+
+void STEPPER::loop(void (*fn)()) {
+  // move as long as steps_left <> 0
+  if (steps_left && (clock.current_tick - last_move_tick) > speed) {
+    last_move_tick = clock.current_tick;
+    move_one_step(steps_left > 0 ? 1 : -1);
+    steps_left = steps_left + (steps_left > 0 ? -1 : 1);
+
+    if (!steps_left) {
+      if (fn) (*fn)(); // callback
+      stop();
+    }
+  }
 }
