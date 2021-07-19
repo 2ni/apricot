@@ -46,19 +46,10 @@ void mcu_init(uint8_t enable_rx) {
  */
 uint16_t get_vin() {
   pins_vin.port_adc->CTRLC = ADC_PRESC_DIV128_gc | ADC_REFSEL_INTREF_gc | (0<<ADC_SAMPCAP_bp);
-#ifdef __AVR_ATtiny3217__
-  if  (pins_vin.port_adc == &ADC0) {
-    VREF.CTRLA = VREF_ADC1REFSEL_1V1_gc; // ADC0 refers to VREF.CTRLA
-  } else {
-    VREF.CTRLC = VREF_ADC1REFSEL_1V1_gc; // ADC1 refers to VREF.CTRLC
-  }
-#elif defined(__AVR_ATtiny1604__)
-  VREF.CTRLA = VREF_ADC0REFSEL_1V1_gc;
-#endif
 
   uint16_t adc = 0;
   for (uint8_t i=0; i<4; i++) {
-    adc += (134200*pins_getadc(&pins_vin))/225280;
+    adc += (134200*pins_getadc(&pins_vin, VREF_ADC0REFSEL_1V1_gc))/225280;
   }
   return adc/4;
 

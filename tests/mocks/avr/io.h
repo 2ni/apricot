@@ -194,13 +194,41 @@ extern TCB_t FakeTCB;
 #define TCB_ENABLE_bm  0x01  /* Enable bit mask. */
 #define TCB0_INT_vect
 
-
-
 typedef enum TCB_CLKSEL_enum
 {
   TCB_CLKSEL_CLKDIV1_gc = (0x00<<1),  /* CLK_PER (No Prescaling) */
   TCB_CLKSEL_CLKDIV2_gc = (0x01<<1),  /* CLK_PER/2 (From Prescaler) */
   TCB_CLKSEL_CLKTCA_gc = (0x02<<1),  /* Use Clock from TCA */
 } TCB_CLKSEL_t;
+
+#define VREF (*(VREF_t *) 0x00A0) /* Voltage reference */
+/* Voltage reference */
+typedef struct VREF_struct
+{
+    register8_t CTRLA;  /* Control A */
+    register8_t CTRLB;  /* Control B */
+    register8_t CTRLC;  /* Control C */
+    register8_t CTRLD;  /* Control D */
+} VREF_t;
+
+/* ADC0 reference select select */
+typedef enum VREF_ADC0REFSEL_enum
+{
+    VREF_ADC0REFSEL_0V55_gc = (0x00<<4),  /* Voltage reference at 0.55V */
+    VREF_ADC0REFSEL_1V1_gc = (0x01<<4),  /* Voltage reference at 1.1V */
+    VREF_ADC0REFSEL_2V5_gc = (0x02<<4),  /* Voltage reference at 2.5V */
+    VREF_ADC0REFSEL_4V34_gc = (0x03<<4),  /* Voltage reference at 4.34V */
+    VREF_ADC0REFSEL_1V5_gc = (0x04<<4),  /* Voltage reference at 1.5V */
+} VREF_ADC0REFSEL_t;
+
+/* ADC1 reference select select */
+typedef enum VREF_ADC1REFSEL_enum
+{
+    VREF_ADC1REFSEL_0V55_gc = (0x00<<4),  /* Voltage reference at 0.55V */
+    VREF_ADC1REFSEL_1V1_gc = (0x01<<4),  /* Voltage reference at 1.1V */
+    VREF_ADC1REFSEL_2V5_gc = (0x02<<4),  /* Voltage reference at 2.5V */
+    VREF_ADC1REFSEL_4V34_gc = (0x03<<4),  /* Voltage reference at 4.34V */
+    VREF_ADC1REFSEL_1V5_gc = (0x04<<4),  /* Voltage reference at 1.5V */
+} VREF_ADC1REFSEL_t;
 
 #endif

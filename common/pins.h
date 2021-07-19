@@ -26,7 +26,7 @@ void     pins_toggle(pins_t *pin);
 uint8_t  pins_get(pins_t *pin);
 void     pins_pullup(pins_t *pin, uint8_t value);
 void     pins_flash(pins_t *pin, uint8_t num=3, uint8_t duration=100);
-uint16_t pins_getadc(pins_t *pin);
+uint16_t pins_getadc(pins_t *pin, uint8_t vref=VREF_ADC0REFSEL_1V1_gc, uint8_t highres=1);
 uint8_t  pins_adc_isrunning(pins_t *pin);
 
 #endif

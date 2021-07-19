@@ -129,13 +129,34 @@ void pins_flash(pins_t *pin, uint8_t num, uint8_t duration) {
 
 /*
  * get adc value on given pin
- * 10bit resolution
+ * highres: 10bit or 8bit resolution
+ * vref should be eg VREF_ADC1REFSEL_1V1_gc
+ * you might need to set CTRLC, eg
+ * pins_vin.port_adc->CTRLC = ADC_PRESC_DIV128_gc | ADC_REFSEL_INTREF_gc | (0<<ADC_SAMPCAP_bp);
+ *
  */
-uint16_t pins_getadc(pins_t *pin) {
+uint16_t pins_getadc(pins_t *pin, uint8_t vref, uint8_t highres) {
+  // set voltage reference, as we dont
+  // vref should be one of the following values:
+  // VREF_ADC0REFSEL_0V55_gc
+  // VREF_ADC0REFSEL_1V1_gc
+  // VREF_ADC0REFSEL_1V5_gc
+  // VREF_ADC0REFSEL_2V5_gc
+  // VREF_ADC0REFSEL_4V34_gc
+#ifdef __AVR_ATtiny3217__
+  if ((*pin).port_adc == &ADC0) {
+    VREF.CTRLA = vref;
+  } else {
+    VREF.CTRLC = vref;
+  }
+#elif defined(__AVR_ATtiny1604__)
+  VREF.CTRLA = vref;
+#endif
+
   pins_output(pin, 0); // set input
   (*pin).port_adc->MUXPOS = ((ADC_MUXPOS_AIN0_gc + (*pin).pin_adc) << 0);
 
-  (*pin).port_adc->CTRLA = (1<<ADC_ENABLE_bp) | (0<<ADC_FREERUN_bp) | ADC_RESSEL_10BIT_gc;
+  (*pin).port_adc->CTRLA = (1<<ADC_ENABLE_bp) | (0<<ADC_FREERUN_bp) | (highres ? ADC_RESSEL_10BIT_gc : ADC_RESSEL_8BIT_gc);
   (*pin).port_adc->COMMAND |= 1;
   while (pins_adc_isrunning(pin));
 
