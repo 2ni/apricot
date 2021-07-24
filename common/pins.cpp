@@ -153,6 +153,12 @@ uint16_t pins_getadc(pins_t *pin, uint8_t vref, uint8_t highres) {
   VREF.CTRLA = vref;
 #endif
 
+  // ADC_SAMPCAP_bp=0 Recommended for reference voltage values below 1V
+  // below DIV128 values seem to be wrong
+  uint8_t samcap = 1;
+  if (vref == VREF_ADC0REFSEL_0V55_gc) samcap = 0;
+  (*pin).port_adc->CTRLC = ADC_PRESC_DIV128_gc | ADC_REFSEL_INTREF_gc | (samcap<<ADC_SAMPCAP_bp);
+
   pins_output(pin, 0); // set input
   (*pin).port_adc->MUXPOS = ((ADC_MUXPOS_AIN0_gc + (*pin).pin_adc) << 0);
 

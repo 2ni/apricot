@@ -90,7 +90,16 @@ extern PORT_t FakePort;
 #define ADC_RESRDY_bm  0x01
 #define ADC_ENABLE_bp  0  /* ADC Enable bit position. */
 #define ADC_FREERUN_bp  1  /* ADC Freerun mode bit position. */
-
+#define ADC_REFSEL_INTREF_gc (0x00<<4)
+#define ADC_SAMPCAP_bp 6
+#define ADC_PRESC_DIV2_gc (0x00<<0)  /* CLK_PER divided by 2 */
+#define ADC_PRESC_DIV4_gc (0x01<<0)  /* CLK_PER divided by 4 */
+#define ADC_PRESC_DIV8_gc (0x02<<0)  /* CLK_PER divided by 8 */
+#define ADC_PRESC_DIV16_gc (0x03<<0)  /* CLK_PER divided by 16 */
+#define ADC_PRESC_DIV32_gc (0x04<<0)  /* CLK_PER divided by 32 */
+#define ADC_PRESC_DIV64_gc (0x05<<0)  /* CLK_PER divided by 64 */
+#define ADC_PRESC_DIV128_gc (0x06<<0)  /* CLK_PER divided by 128 */
+#define ADC_PRESC_DIV256_gc (0x07<<0)  /* CLK_PER divided by 256 */
 
 typedef struct ADC_struct
 {

@@ -41,12 +41,8 @@ void mcu_init(uint8_t enable_rx) {
  * returns precision 1/100 volt, eg 495 -> 4.95v
  * max vbat: 8.3v (1.5v ref)
  *           6.1v (1.1v ref)
- *
- * for some strange reasons I get wrong values if prescaler is lower than 128
  */
 uint16_t get_vin() {
-  pins_vin.port_adc->CTRLC = ADC_PRESC_DIV128_gc | ADC_REFSEL_INTREF_gc | (0<<ADC_SAMPCAP_bp);
-
   uint16_t adc = 0;
   for (uint8_t i=0; i<4; i++) {
     adc += (134200*pins_getadc(&pins_vin, VREF_ADC0REFSEL_1V1_gc))/225280;
