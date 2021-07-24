@@ -16,7 +16,8 @@ class TOUCH {
       VERYLONG = 0x04
     } Press_type;
 
-    TOUCH(pins_t *pin, uint16_t threshold_low = 10, uint16_t threshold_high = 100, uint16_t idle = 0);
+    TOUCH(pins_t *pin);
+    void init(uint16_t low = 10, uint16_t high = 100, uint16_t idle = 0);
     uint16_t get_data();
     uint16_t get_avg();
     // 12288*8/32768 = 3sec, 20480*8/32768 = 5sec

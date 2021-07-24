@@ -13,11 +13,14 @@
 #define SLEEP_TIME 50
 #define SLEEP_PER UINT16_C(SLEEP_TIME)*1024/1000
 
+TOUCH button(&PB7);
+
 int main(void) {
   mcu_init();
+  button.init();
+
   PORTA.DIRSET = PIN7_bm;
   PORTB.DIRSET = PIN5_bm;
-  TOUCH button(&PB7);
 
   /*
   TOUCH seat(&PA3);

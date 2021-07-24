@@ -4,8 +4,11 @@
 #include "uart.h"
 #include "mcu.h"
 
-TOUCH::TOUCH(pins_t *ipin, uint16_t low, uint16_t high, uint16_t idle) {
+TOUCH::TOUCH(pins_t *ipin) {
   pin = ipin;
+}
+
+void TOUCH::init(uint16_t low, uint16_t high, uint16_t idle) {
   if (idle == 0) {
     idle = get_avg();
   }
@@ -102,11 +105,11 @@ uint16_t TOUCH::get_data() {
   return result;
 }
 
-uint8_t TOUCH::is_pressed(void (*fn)(Press_type, uint32_t), uint32_t tick_long, uint32_t tick_verylong) {
+uint8_t TOUCH::is_pressed(void (*fn)(Press_type type, uint32_t ticks), uint32_t tick_long, uint32_t tick_verylong) {
   return is_pressed(fn, &pins_led, tick_long, tick_verylong);
 }
 
-uint8_t TOUCH::is_pressed(void (*fn)(Press_type, uint32_t), pins_t *led, uint32_t tick_long, uint32_t tick_verylong) {
+uint8_t TOUCH::is_pressed(void (*fn)(Press_type type, uint32_t ticks), pins_t *led, uint32_t tick_long, uint32_t tick_verylong) {
   uint16_t v = get_data();
 
   if (v > threshold_upper && !pressed) {

@@ -117,8 +117,11 @@ void callback_button(TOUCH::Press_type type, uint32_t ticks) {
   }
 }
 
+TOUCH button(&PB7);
+
 int main(void) {
   mcu_init();
+  button.init();
   sht20.init();
   if (isl.init() != 0) {
     DL(NOK("ISL29035 init failed"));
@@ -127,7 +130,6 @@ int main(void) {
 
   lora.init(&ee_session); // persist session
 
-  TOUCH button(&PB7);
 
 #ifdef OTAA
   uint32_t last_join_tick = 0;

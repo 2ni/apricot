@@ -16,6 +16,8 @@
 // 3: extended example as 2 but done manually
 #define EXAMPLE 2
 
+TOUCH button(&PB7);
+
 void released(TOUCH::Press_type type, uint32_t ticks) {
   DF("press: %s for %lus\n", type == TOUCH::SHORT ? "SHORT" : (type == TOUCH::LONG ? "LONG" : "VERYLONG"), ticks*8/32768);
 }
@@ -26,9 +28,8 @@ void released_seconds(TOUCH::Press_type type, uint32_t ticks) {
 
 int main(void) {
   mcu_init();
-
-  TOUCH button(&PB7);
-  // TOUCH button(&PA3, 10, 30); // alu strip to check if someone is sitting on a chair
+  button.init();
+  // button.init(10, 30); // alu strip to check if someone is sitting on a chair
 
   pins_disable_buffer();
 
