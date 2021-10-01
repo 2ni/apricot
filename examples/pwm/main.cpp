@@ -36,7 +36,7 @@ void update(uint16_t frequency, uint16_t pwm) {
   TCD0.CMPBSET = TCD0.CMPBCLR - TCD0.CMPBCLR*pwm/100;
   while (!(TCD0.STATUS & TCD_ENRDY_bm)); // wait for any synch going on
   TCD0.CTRLE = TCD_SYNC_bm;
-  DF("frq: %u, pwm: %u, steps: %u\n", frequency, pwm, TCD0.CMPBCLR);
+  DF("frq: %u, pwm: %u, steps: %u (%u/%u)\n", frequency, pwm, TCD0.CMPBCLR, TCD0.CMPBSET, TCD0.CMPBCLR);
 }
 
 ISR(USART0_RXC_vect) {
