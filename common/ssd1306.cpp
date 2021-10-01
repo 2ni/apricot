@@ -138,11 +138,56 @@ void ssd1306_char(char c, uint8_t row, uint8_t col) {
   twi_stop();
 }
 
-uint8_t ssd1306_text(const char *text, uint8_t row, uint8_t col) {
+uint8_t ssd1306_pow(uint8_t value) {
+  for (uint8_t i=7; i>=0; i--) {
+    if ((1<<i) & value) return i;
+  }
+  return 0;
+}
+
+/*
+ * scale: 1, 2, 4, 8
+ */
+void ssd1306_largechar(char c, uint8_t row, uint8_t col, uint8_t scale) {
+  uint16_t double_char;
+  uint8_t d_char;
+  uint8_t d_char_masked_window;
+  uint8_t d_char_chunk;
+
+  // window of bits to consider, eg 1111 for factor 2
+  uint8_t mask = ((1<<(8>>ssd1306_pow(scale)))-1);
+  uint8_t mask_len = 0;
+  for (uint8_t i=0; i<8; i++) mask_len += (mask & (1<<i))>>i;
+
+  for (uint8_t i=0; i<5; i++) {
+    d_char = pgm_read_byte(&font[c-32][i]);
+    for (uint8_t h=0; h<scale; h++) { // scale vertically
+      d_char_masked_window = (d_char & (mask<<(mask_len*h)))>>(mask_len*h); // get current window
+      d_char_chunk = 0;
+      for (uint8_t p=0; p<mask_len; p++) { // create vertical stretched byte
+        if (d_char_masked_window & (1<<p)) {
+          for (uint8_t s=0; s<scale; s++) {
+            d_char_chunk |= (1<<(p*scale+s));
+          }
+        }
+      }
+
+      for (uint8_t w=0; w<scale; w++) { // scale horizontally
+        ssd1306_set_pos(row+h, col+i*scale+w);
+        ssd1306_data();
+        twi_write(d_char_chunk);
+        twi_write(0);
+        twi_stop();
+      }
+    }
+  }
+}
+
+uint8_t ssd1306_text(const char *text, uint8_t row, uint8_t col, uint8_t scale) {
   ssd1306_set_pos(row, col);
   for (uint8_t i=0; i<strlen(text); i++) {
-    ssd1306_char(text[i], row, col);
-    col += 5+1;
+    ssd1306_largechar(text[i], row, col, scale);
+    col += scale*(5+1);
   }
   return col;
 }

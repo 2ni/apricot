@@ -28,6 +28,8 @@ void    ssd1306_dot(uint8_t xx, uint8_t yy, uint8_t width=1);
 void    ssd1306_hline(uint8_t y, uint8_t from, uint8_t width, uint8_t height=1);
 void    ssd1306_vline(uint8_t x);
 void    ssd1306_char(char c, uint8_t row, uint8_t col);
-uint8_t ssd1306_text(const char *text, uint8_t row, uint8_t col);
+uint8_t ssd1306_pow(uint8_t value);
+void    ssd1306_largechar(char c, uint8_t row, uint8_t col, uint8_t scale=2);
+uint8_t ssd1306_text(const char *text, uint8_t row, uint8_t col, uint8_t scale=1);
 
 #endif
