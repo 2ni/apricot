@@ -1,61 +1,67 @@
-#include <avr/pgmspace.h>
 #include <string.h>
 
 #include "ssd1306.h"
-#include "fonts.h"
 #include "twi.h"
 #include "uart.h"
 
+SSD1306::SSD1306() {
+  SSD1306::addr = 0x3c;
+}
+
+SSD1306::SSD1306(uint8_t addr) {
+  SSD1306::addr = addr;
+}
+
 // TODO return error code
-void ssd1306_data() {
-  if (twi_start(SSD1306_ADDR) != 0) DF(NOK("err start i2c data 0x%02x") "\n", SSD1306_ADDR);
+void SSD1306::data() {
+  if (twi_start(SSD1306::addr) != 0) DF(NOK("err start i2c data 0x%02x") "\n", SSD1306::addr);
   twi_write(0x40);
 }
 
-void ssd1306_cmd() {
-  if (twi_start(SSD1306_ADDR) != 0) DF(NOK("err start i2c cmd 0x%02x") "\n", SSD1306_ADDR);
-  twi_start(SSD1306_ADDR);
+void SSD1306::cmd() {
+  if (twi_start(SSD1306::addr) != 0) DF(NOK("err start i2c cmd 0x%02x") "\n", SSD1306::addr);
+  twi_start(SSD1306::addr);
   twi_write(0);
 }
 
-void ssd1306_cmd(uint8_t cmd) {
-  ssd1306_cmd();
+void SSD1306::cmd(uint8_t cmd) {
+  SSD1306::cmd();
   twi_write(cmd);
   twi_stop();
 }
 
 // return error code and print if error
-void ssd1306_init() {
+void SSD1306::init() {
   twi_init();
-  for (uint8_t i=0; i<sizeof(ssd1306_init_cmds); i++) {
-    ssd1306_cmd();
-    twi_write(ssd1306_init_cmds[i]);
+  for (uint8_t i=0; i<sizeof(SSD1306::init_cmds); i++) {
+    SSD1306::cmd();
+    twi_write(SSD1306::init_cmds[i]);
     twi_stop();
-    ssd1306_data();
-    twi_stop();
-  }
-  ssd1306_clear();
-}
-
-void ssd1306_init_transfer () {
-  for (uint8_t i=0; i<sizeof(ssd1306_init_transfer_cmds); i++) {
-    ssd1306_cmd();
-    twi_write(ssd1306_init_transfer_cmds[i]);
+    SSD1306::data();
     twi_stop();
   }
+  SSD1306::clear();
 }
 
-void ssd1306_off() {
-  ssd1306_cmd(0xae);
+void SSD1306::init_transfer () {
+  for (uint8_t i=0; i<sizeof(SSD1306::init_transfer_cmds); i++) {
+    SSD1306::cmd();
+    twi_write(SSD1306::init_transfer_cmds[i]);
+    twi_stop();
+  }
 }
 
-void ssd1306_on() {
-  ssd1306_cmd(0xaf);
+void SSD1306::off() {
+  SSD1306::cmd(0xae);
 }
 
-void ssd1306_clear() {  //nn<128x8=1024
-  ssd1306_init_transfer();
-  ssd1306_data();
+void SSD1306::on() {
+  SSD1306::cmd(0xaf);
+}
+
+void SSD1306::clear() {  //nn<128x8=1024
+  SSD1306::init_transfer();
+  SSD1306::data();
   for (uint16_t i=0; i<1024; i++) {
     twi_write(0x00);
   }
@@ -66,25 +72,25 @@ void ssd1306_clear() {  //nn<128x8=1024
  * row: 0-7
  * col: 0-124 (or 123 depending on char size)
  */
-void ssd1306_clear(uint8_t row, uint8_t col, uint8_t width) {
-  ssd1306_set_pos(row, col);
-  ssd1306_data();
+void SSD1306::clear(uint8_t row, uint8_t col, uint8_t width) {
+  SSD1306::set_pos(row, col);
+  SSD1306::data();
   for (uint8_t i=0; i<width; i++) {
     twi_write(0x00);
   }
   twi_stop();
 }
 
-void ssd1306_set_row(int8_t row) {
-  ssd1306_cmd();
+void SSD1306::set_row(int8_t row) {
+  SSD1306::cmd();
   twi_write(0x22);
   twi_write(row);
   twi_write(7);
   twi_stop();
 }
 
-void ssd1306_set_col(uint8_t col) {
-  ssd1306_cmd();
+void SSD1306::set_col(uint8_t col) {
+  SSD1306::cmd();
   twi_write(0x21);
   twi_write(col);
   twi_write(127);
@@ -95,15 +101,15 @@ void ssd1306_set_col(uint8_t col) {
  * row: 0-7
  * col: 0-124 (or 123 depending on char size)
  */
-void ssd1306_set_pos(uint8_t row, uint8_t col) {
-  ssd1306_set_row(row);
-  ssd1306_set_col(col);
+void SSD1306::set_pos(uint8_t row, uint8_t col) {
+  SSD1306::set_row(row);
+  SSD1306::set_col(col);
 }
 
 // y: 0-64 -> 0-7
-void ssd1306_dot(uint8_t x, uint8_t y, uint8_t width) {
-  ssd1306_set_pos(y/8, x);
-  ssd1306_data();
+void SSD1306::dot(uint8_t x, uint8_t y, uint8_t width) {
+  SSD1306::set_pos(y/8, x);
+  SSD1306::data();
   twi_write(((1<<width)-1) << (y%8)); // deletes all other bits
   twi_stop();
 }
@@ -113,32 +119,32 @@ void ssd1306_dot(uint8_t x, uint8_t y, uint8_t width) {
  * width: width starting from x=0
  * height: 1-8px
  */
-void ssd1306_hline(uint8_t y, uint8_t from, uint8_t width, uint8_t height) {
+void SSD1306::hline(uint8_t y, uint8_t from, uint8_t width, uint8_t height) {
   for (uint8_t i=from; i<(from+width); i++) {
-    ssd1306_dot(i, y, height);
+    SSD1306::dot(i, y, height);
   }
 }
 
-void ssd1306_vline (uint8_t x) {
+void SSD1306::vline (uint8_t x) {
   for (uint8_t i=0; i<8; i++) {
-    ssd1306_set_pos(i, x);
-    ssd1306_data ();
+    SSD1306::set_pos(i, x);
+    SSD1306::data ();
     twi_write(0xFF);
     twi_stop();
   }
 }
 
-void ssd1306_char(char c, uint8_t row, uint8_t col) {
-  ssd1306_set_pos(row, col);
-  ssd1306_data();
+void SSD1306::normalchar(char c, uint8_t row, uint8_t col) {
+  SSD1306::set_pos(row, col);
+  SSD1306::data();
   for (uint8_t i=0; i<5; i++) {
-    twi_write(pgm_read_byte(&font[c-32][i])); // start at pos 32 ascii table, 5 bytes
+    twi_write(SSD1306::font[c-32][i]); // start at pos 32 ascii table, 5 bytes
   }
   twi_write(0);
   twi_stop();
 }
 
-uint8_t ssd1306_pow(uint8_t value) {
+uint8_t SSD1306::pow(uint8_t value) {
   for (uint8_t i=7; i>=0; i--) {
     if ((1<<i) & value) return i;
   }
@@ -148,19 +154,18 @@ uint8_t ssd1306_pow(uint8_t value) {
 /*
  * scale: 1, 2, 4, 8
  */
-void ssd1306_largechar(char c, uint8_t row, uint8_t col, uint8_t scale) {
-  uint16_t double_char;
+void SSD1306::largechar(char c, uint8_t row, uint8_t col, uint8_t scale) {
   uint8_t d_char;
   uint8_t d_char_masked_window;
   uint8_t d_char_chunk;
 
   // window of bits to consider, eg 1111 for factor 2
-  uint8_t mask = ((1<<(8>>ssd1306_pow(scale)))-1);
+  uint8_t mask = ((1<<(8>>SSD1306::pow(scale)))-1);
   uint8_t mask_len = 0;
   for (uint8_t i=0; i<8; i++) mask_len += (mask & (1<<i))>>i;
 
   for (uint8_t i=0; i<5; i++) {
-    d_char = pgm_read_byte(&font[c-32][i]);
+    d_char = SSD1306::font[c-32][i];
     for (uint8_t h=0; h<scale; h++) { // scale vertically
       d_char_masked_window = (d_char & (mask<<(mask_len*h)))>>(mask_len*h); // get current window
       d_char_chunk = 0;
@@ -173,8 +178,8 @@ void ssd1306_largechar(char c, uint8_t row, uint8_t col, uint8_t scale) {
       }
 
       for (uint8_t w=0; w<scale; w++) { // scale horizontally
-        ssd1306_set_pos(row+h, col+i*scale+w);
-        ssd1306_data();
+        SSD1306::set_pos(row+h, col+i*scale+w);
+        SSD1306::data();
         twi_write(d_char_chunk);
         twi_write(0);
         twi_stop();
@@ -183,10 +188,10 @@ void ssd1306_largechar(char c, uint8_t row, uint8_t col, uint8_t scale) {
   }
 }
 
-uint8_t ssd1306_text(const char *text, uint8_t row, uint8_t col, uint8_t scale) {
-  ssd1306_set_pos(row, col);
+uint8_t SSD1306::text(const char *text, uint8_t row, uint8_t col, uint8_t scale) {
+  SSD1306::set_pos(row, col);
   for (uint8_t i=0; i<strlen(text); i++) {
-    ssd1306_largechar(text[i], row, col, scale);
+    SSD1306::largechar(text[i], row, col, scale);
     col += scale*(5+1);
   }
   return col;
