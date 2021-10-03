@@ -60,6 +60,9 @@ def on_press(key):
         k = key.char  # single-char keys
         # print("single: " + k)
         client.write(k.encode())
+    except AttributeError:
+        # ignore keypress ^
+        pass
     except:
         k = key.name  # other keys
         # print("other: " + k)
