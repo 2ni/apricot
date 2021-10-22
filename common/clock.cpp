@@ -80,6 +80,11 @@ void CLOCK::sleep_until(uint32_t tick_until) {
   }
 }
 
+/*
+ * default
+ *   PER=7
+ *   1ms = 4.096 ticks (32768/(1000*(PER+1))
+ */
 void CLOCK::sleep_for(uint32_t ticks) {
   sleep_until(current_tick + ticks);
 }
