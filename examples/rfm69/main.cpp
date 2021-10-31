@@ -26,9 +26,31 @@ int main(void) {
   }
 
   RFM69::Packet response;
+
+  /*
+  DL("Waiting for data...");
   while (1) {
+    if (rfm69.listen(&response, 0)) {
+      DF("received: '%s'\n", response.message);
+    }
+  }
+  */
+
+  /*
+  while (1) {
+    DF("sending %03u | ", counter);
+    len = sprintf(msg, "%u", counter);
+    rfm69.send_frame(GATEWAY, msg, len, 1, 0);
+    if (rfm69.listen(&response)) {
+      D("ack");
+    }
+    DL("");
     counter++;
     clock.sleep_for(4096);
+  }
+  */
+
+  while (1) {
     DF("sending %03u | ", counter);
     len = sprintf(msg, "%u", counter);
     // rfm69.send(GATEWAY, msg, len);
@@ -37,10 +59,13 @@ int main(void) {
     //   DF("response: '%s'\n", response);
     // }
     if (rfm69.send_retry(GATEWAY, msg, len, &response, 2)) {
-      DF(OK("response from %u: '%s'") "\n", response.from, response.message);
+      DF(OK("response from %u: '%s' (%idBm)") "\n", response.from, response.message, response.rssi);
     } else {
       DL(NOK("no response"));
     }
+
+    counter++;
+    clock.sleep_for(8192);
   }
 }
 
