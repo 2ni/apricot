@@ -25,6 +25,7 @@ class RFM69 {
     typedef struct {
       uint8_t message[RFM69_MAX_DATA_LEN+1];
       uint8_t from;
+      int16_t rssi;
     } Packet;
 
     RFM69(pins_t pin_cs, pins_t pin_interrupt);
@@ -41,6 +42,7 @@ class RFM69 {
     uint8_t  send(uint8_t to, const void* buffer, uint8_t buffer_len, RFM69::Packet *response = 0);
     uint8_t  send_retry(uint8_t to, const void* buffer, uint8_t buffer_len, RFM69::Packet *response, uint8_t retries);
     uint8_t  listen(RFM69::Packet *response, uint8_t timeout_enabled = 1);
+    int16_t  read_rssi(uint8_t force = 0);
     void     send_frame(uint8_t to, const void* buffer, uint8_t size, uint8_t request_ack, uint8_t send_ack);
 
     static RFM69 *rfm69_ptr;

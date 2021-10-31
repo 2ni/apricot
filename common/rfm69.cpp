@@ -355,6 +355,8 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
   if (datalen < RFM69_MAX_DATA_LEN) response->message[datalen] = 0; // add null at end of string
   this->unselect();
 
+  response->rssi = this->read_rssi();
+
   // send ack. avoid ping-poing so we dont ack an ack request
   if (ack_requested && !ack_received) {
     this->send_frame(response->from, "", 0, 0, 1);
@@ -363,3 +365,15 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
   // DF("data from %u: '%s' (%lu)\n", response->from, response->message, current_tick-start_tick);
   return 1;
  }
+
+int16_t RFM69::read_rssi(uint8_t force) {
+  int16_t rssi = 0;
+  if (force) {
+    // RSSI trigger not needed if DAGC is in continuous mode
+    this->write_reg(REG_RSSICONFIG, RF_RSSI_START);
+    while ((this->read_reg(REG_RSSICONFIG) & RF_RSSI_DONE) == 0x00); // wait for RSSI_Ready
+  }
+  rssi = -this->read_reg(REG_RSSIVALUE);
+  rssi >>= 1;
+  return rssi;
+}
