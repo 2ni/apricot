@@ -242,7 +242,7 @@ void RFM69::set_high_power_regs(uint8_t enable) {
 }
 
 void RFM69::send_frame(uint8_t to, const void* buffer, uint8_t size, uint8_t request_ack, uint8_t send_ack) {
-  D("sending | ");
+  // D("sending | ");
   this->set_mode(STANDBY); // turn off receiver to prevent reception while filling fifo
   while ((this->read_reg(REG_IRQFLAGS1) & RF_IRQFLAGS1_MODEREADY) == 0x00); // wait for ModeReady
   if (size > RFM69_MAX_DATA_LEN) size = RFM69_MAX_DATA_LEN;
@@ -276,7 +276,7 @@ void RFM69::send_frame(uint8_t to, const void* buffer, uint8_t size, uint8_t req
     current_tick = clock.current_tick;
   }
   this->set_mode(STANDBY);
-  DF("sent (%lu) | ", current_tick-start_tick);
+  // DF("sent (%lu) | ", current_tick-start_tick);
 }
 
 uint8_t RFM69::send(uint8_t to, const void* buffer, uint8_t buffer_len, RFM69::Packet *response) {
@@ -296,8 +296,9 @@ uint8_t RFM69::send_retry(uint8_t to, const void* buffer, uint8_t buffer_len, RF
       return 1;
     }
 
+    this->set_mode(STANDBY);
     DF(WARN("retry %u") " | ", i);
-    clock.sleep_for(4096);
+    clock.sleep_for(410); // timeout until retry ms*32768/8000
   }
 
   DL("");
@@ -314,7 +315,7 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
   this->isr = 0;
   uint32_t start_tick = clock.current_tick;
   uint32_t current_tick = start_tick;
-  uint32_t limit = 300; // timeout: ms*32768/8000
+  uint32_t limit = 600; // timeout: ms*32768/8000
   if (timeout_enabled) {
     while (((current_tick - start_tick) < limit) && !this->isr) {
       current_tick = clock.current_tick;
