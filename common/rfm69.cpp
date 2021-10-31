@@ -11,26 +11,26 @@
 RFM69* RFM69::rfm69_ptr;
 
 ISR(PORTC_PORT_vect) {
-  D("*");
+  // D("*");
   RFM69::rfm69_ptr->isr = 1;
   RFM69::rfm69_ptr->pin_interrupt.port->INTFLAGS |= (1<<RFM69::rfm69_ptr->pin_interrupt.pin); // clear interrupt flag
 }
 
 RFM69::RFM69() {
-  this->rfm69_ptr = this;
-  this->pin_cs = PC3;
-  this->pin_interrupt = PC4;
-  this->is_rfm69hcw = 1;
-  this->spy_mode = 0;
+  this->init_vars(PC3, PC4);
 }
 
 RFM69::RFM69(pins_t pin_cs, pins_t pin_interrupt) {
+  this->init_vars(pin_cs, pin_interrupt);
+}
+
+void RFM69::init_vars(pins_t pin_cs, pins_t pin_interrupt) {
   this->rfm69_ptr = this;
   this->pin_cs = pin_cs;
   this->pin_interrupt = pin_interrupt;
-  this->is_rfm69hcw = 1;
   this->spy_mode = 0;
-}
+  this->power_level = 23;
+ }
 
 uint8_t RFM69::init(uint8_t node_id, uint8_t network_id) {
   return this->init(868, node_id, network_id);
@@ -155,21 +155,24 @@ void RFM69::encrypt(const char *key) {
 }
 
 void RFM69::set_high_power() {
-  this->write_reg(REG_OCP, this->is_rfm69hcw ? RF_OCP_OFF : RF_OCP_ON); //disable OverCurrentProtection for HW/HC
-  this->set_power_level(31);
+  this->write_reg(REG_OCP, RF_OCP_OFF); //disable OverCurrentProtection for HW/HC
+  this->set_power_level(this->power_level);
 }
 
+/*
+ * TODO can we get rid of this->mode?
+ */
 void RFM69::set_mode(RFM69::Mode mode) {
   if (this->mode == mode) return;
 
   switch (mode) {
     case TX:
       this->write_reg(REG_OPMODE, (this->read_reg(REG_OPMODE) & 0xE3) | RF_OPMODE_TRANSMITTER);
-      if (this->is_rfm69hcw) this->set_high_power_regs(1);
+      this->set_high_power_regs(1);
       break;
     case RX:
       this->write_reg(REG_OPMODE, (this->read_reg(REG_OPMODE) & 0xE3) | RF_OPMODE_RECEIVER);
-      if (this->is_rfm69hcw) this->set_high_power_regs(0);
+      this->set_high_power_regs(0);
       break;
     case SYNTH:
       this->write_reg(REG_OPMODE, (this->read_reg(REG_OPMODE) & 0xE3) | RF_OPMODE_SYNTHESIZER);
@@ -201,29 +204,28 @@ void RFM69::unselect() {
   pins_set(&this->pin_cs, 1);
 }
 
+/*
+ * https://lowpowerlab.com/2021/08/31/rfm69-tx-output-power-testing-library-fix/
+ * level: 0-23
+ * 0-15: PA1
+ * 16-19: PA1+PA2
+ * 20-23: PA1+PA2+HiPWr
+ */
 void RFM69::set_power_level(uint8_t level) {
   uint8_t pa_setting;
-  if (this->is_rfm69hcw) {
-    if (level>23) level = 23;
-    this->power_level = level;
+  if (level>23) level = 23;
+  this->power_level = level;
 
-    //now set Pout value & active PAs based on this->power_level range as outlined in summary above
-    if (this->power_level < 16) {
-      level += 16;
-      pa_setting = RF_PALEVEL_PA1_ON; // enable PA1 only
-    } else {
-      if (this->power_level < 20)
-        level += 10;
-      else
-        level += 8;
-      pa_setting = RF_PALEVEL_PA1_ON | RF_PALEVEL_PA2_ON; // enable PA1+PA2
-    }
-    this->set_high_power_regs(1); // always call this in case we're crossing power boundaries in TX mode
-  } else { //this is a W/CW, register value is the same as this->power_level
-    if (level>31) level = 31;
-    this->power_level =  level;
-    pa_setting = RF_PALEVEL_PA0_ON; // enable PA0 only
+  // enable PA1
+  if (this->power_level < 16) {
+    level += 16;
+    pa_setting = RF_PALEVEL_PA1_ON;
+  // enable PA1+PA2
+  } else {
+    level += this->power_level < 20 ? 10 : 8;
+    pa_setting = RF_PALEVEL_PA1_ON | RF_PALEVEL_PA2_ON;
   }
+  this->set_high_power_regs(1); // always call this in case we're crossing power boundaries in TX mode
 
   this->write_reg(REG_PALEVEL, pa_setting | level);
 }
@@ -234,7 +236,7 @@ void RFM69::set_power_level(uint8_t level) {
  * should only be used with PA1+PA2
  */
 void RFM69::set_high_power_regs(uint8_t enable) {
-  if (!this->is_rfm69hcw || this->power_level<20) enable=false;
+  if (this->power_level<20) enable=false;
   this->write_reg(REG_TESTPA1, enable ? 0x5D : 0x55);
   this->write_reg(REG_TESTPA2, enable ? 0x7C : 0x70);
 }
@@ -255,7 +257,7 @@ void RFM69::send_frame(uint8_t to, const void* buffer, uint8_t size, uint8_t req
   // write to FIFO
   this->select();
   spi_transfer_byte(REG_FIFO | 0x80);
-  spi_transfer_byte(size + 3);
+  spi_transfer_byte(size + 3); // TODO do not hard code packet met data size
   spi_transfer_byte(to);
   spi_transfer_byte(this->node_id);
   spi_transfer_byte(ctl_byte);
@@ -306,13 +308,13 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
   if (this->read_reg(REG_IRQFLAGS2) & RF_IRQFLAGS2_PAYLOADREADY)
     this->write_reg(REG_PACKETCONFIG2, (this->read_reg(REG_PACKETCONFIG2) & 0xFB) | RF_PACKET2_RXRESTART); // avoid RX deadlocks
 
-  // this->write_reg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01); // set DIO0 to "PAYLOADREADY" in receive mode
+  this->write_reg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01); // set DIO0 to "PAYLOADREADY" in receive mode
 
   this->set_mode(RX);
   this->isr = 0;
   uint32_t start_tick = clock.current_tick;
   uint32_t current_tick = start_tick;
-  uint32_t limit = 4096; // timeout: ms*32768/8000
+  uint32_t limit = 300; // timeout: ms*32768/8000
   if (timeout_enabled) {
     while (((current_tick - start_tick) < limit) && !this->isr) {
       current_tick = clock.current_tick;
@@ -332,30 +334,31 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
   spi_transfer_byte(REG_FIFO & 0x7F);
   uint8_t payload_len = spi_transfer_byte(0);
   payload_len = payload_len > 66 ? 66 : payload_len;
-  uint8_t target_id = spi_transfer_byte(0);
-  if (!(spy_mode || target_id == this->node_id || target_id == RFM69_BROADCAST_ADDR) || payload_len < 3) {
+  uint8_t to = spi_transfer_byte(0);
+  if (!(spy_mode || to == this->node_id || to == RFM69_BROADCAST_ADDR) || payload_len < 3) { // TODO do not hardcode packet meta data size
     D("not for us | ");
     this->unselect();
     return 0;
   }
 
   response->from = spi_transfer_byte(0);
-  uint8_t datalen = payload_len - 3; // uin8t_t len, uint8_t dest, uint8_t sender, uin8t_t ctl
   uint8_t ctl_byte = spi_transfer_byte(0);
-
   uint8_t ack_received = ctl_byte & RFM69_CTL_SENDACK; // extract ACK-received flag
   uint8_t ack_requested = ctl_byte & RFM69_CTL_REQACK; // extract ACK-requested flag
 
-  // avoid ping-poing so we dont ack an ack request
-  if (ack_requested && !ack_received) {
-    this->send_frame(response->from, "", 0, 0, 1);
-  }
-
+  // read data
+  uint8_t datalen = payload_len - 3; // TODO do not hardcode packet meta data size. uin8t_t len, uint8_t to, uint8_t from, uin8t_t ctl
   for (uint8_t i = 0; i < datalen; i++) {
       response->message[i] = spi_transfer_byte(0);
   }
   if (datalen < RFM69_MAX_DATA_LEN) response->message[datalen] = 0; // add null at end of string
   this->unselect();
-  DF("data from %u: '%s' (%lu)\n", response->from, response->message, current_tick-start_tick);
+
+  // send ack. avoid ping-poing so we dont ack an ack request
+  if (ack_requested && !ack_received) {
+    this->send_frame(response->from, "", 0, 0, 1);
+  }
+
+  // DF("data from %u: '%s' (%lu)\n", response->from, response->message, current_tick-start_tick);
   return 1;
  }

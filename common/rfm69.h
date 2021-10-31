@@ -41,6 +41,7 @@ class RFM69 {
     uint8_t  send(uint8_t to, const void* buffer, uint8_t buffer_len, RFM69::Packet *response = 0);
     uint8_t  send_retry(uint8_t to, const void* buffer, uint8_t buffer_len, RFM69::Packet *response, uint8_t retries);
     uint8_t  listen(RFM69::Packet *response, uint8_t timeout_enabled = 1);
+    void     send_frame(uint8_t to, const void* buffer, uint8_t size, uint8_t request_ack, uint8_t send_ack);
 
     static RFM69 *rfm69_ptr;
     volatile uint8_t isr;
@@ -49,15 +50,14 @@ class RFM69 {
   private:
     Mode mode;
     pins_t pin_cs;
-    uint8_t is_rfm69hcw;
     uint8_t power_level;
     uint8_t node_id;
     uint8_t spy_mode;
+    void    init_vars(pins_t pins_cs, pins_t pin_interrupt);
 
     void     select();
     void     unselect();
     void     set_high_power_regs(uint8_t enable);
-    void     send_frame(uint8_t to, const void* buffer, uint8_t size, uint8_t request_ack, uint8_t send_ack);
 };
 
 #endif
