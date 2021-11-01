@@ -297,7 +297,7 @@ uint8_t RFM69::send_retry(uint8_t to, const void* buffer, uint8_t buffer_len, RF
     }
 
     this->set_mode(STANDBY);
-    DF(WARN("retry %u") " | ", i);
+    DF(WARN("retry %u (%idBm)") " | ", i, this->read_rssi());
     clock.sleep_for(410); // timeout until retry ms*32768/8000
   }
 
