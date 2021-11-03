@@ -348,7 +348,7 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
   uint8_t ack_requested = ctl_byte & RFM69_CTL_REQACK; // extract ACK-requested flag
 
   // read data
-  uint8_t datalen = payload_len - 3; // TODO do not hardcode packet meta data size. uin8t_t len, uint8_t to, uint8_t from, uin8t_t ctl
+  uint8_t datalen = payload_len - 3; // TODO do not hardcode packet meta data size. uint8_t len, uint8_t to, uint8_t from, uint8_t ctl
   for (uint8_t i = 0; i < datalen; i++) {
       response->message[i] = spi_transfer_byte(0);
   }
