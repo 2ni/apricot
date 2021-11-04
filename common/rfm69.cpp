@@ -281,7 +281,6 @@ void RFM69::send_frame(uint8_t to, const void* buffer, uint8_t size, uint8_t req
 
 uint8_t RFM69::send(uint8_t to, const void* buffer, uint8_t buffer_len, RFM69::Packet *response) {
   this->write_reg(REG_PACKETCONFIG2, (this->read_reg(REG_PACKETCONFIG2) & 0xFB) | RF_PACKET2_RXRESTART); // avoid RX deadlocks
-  // while (!this->rfm69_can_send()) rfm69_receive_done();
 
   // we passed a response object, so do ack communication and wait for answer
   this->send_frame(to, buffer, buffer_len, response ? 1 : 0, 0);
@@ -301,7 +300,6 @@ uint8_t RFM69::send_retry(uint8_t to, const void* buffer, uint8_t buffer_len, RF
     clock.sleep_for(410); // timeout until retry ms*32768/8000
   }
 
-  DL("");
   return 0;
 }
 
