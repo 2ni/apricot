@@ -192,6 +192,10 @@ void RFM69::set_mode(RFM69::Mode mode) {
   this->mode = mode;
 }
 
+void RFM69::sleep() {
+  this->set_mode(SLEEP);
+}
+
 void RFM69::set_network(uint8_t network) {
   this->write_reg(REG_SYNCVALUE2, network);
 }

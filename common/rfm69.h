@@ -36,7 +36,6 @@ class RFM69 {
     void     write_reg(uint8_t addr, uint8_t value);
     void     encrypt(const char* key);
     void     set_high_power();
-    void     set_mode(Mode mode);
     void     set_network(uint8_t id);
     void     set_power_level(uint8_t level);
     uint8_t  send(uint8_t to, const void* buffer, uint8_t buffer_len, RFM69::Packet *response = 0);
@@ -44,6 +43,7 @@ class RFM69 {
     uint8_t  listen(RFM69::Packet *response, uint8_t timeout_enabled = 1);
     int16_t  read_rssi(uint8_t force = 0);
     void     send_frame(uint8_t to, const void* buffer, uint8_t size, uint8_t request_ack, uint8_t send_ack);
+    void     sleep();
 
     static RFM69 *rfm69_ptr;
     volatile uint8_t isr;
@@ -57,6 +57,7 @@ class RFM69 {
     uint8_t spy_mode;
     void    init_vars(pins_t pins_cs, pins_t pin_interrupt);
 
+    void     set_mode(Mode mode);
     void     select();
     void     unselect();
     void     set_high_power_regs(uint8_t enable);

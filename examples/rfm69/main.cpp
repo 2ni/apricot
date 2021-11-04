@@ -60,10 +60,12 @@ int main(void) {
     // }
     if (rfm69.send_retry(GATEWAY, msg, len, &response, 2)) {
       // 0x%06lX
-      DF(OK("from 0x%u: '%s' (%idBm)") "\n", response.from, response.message, response.rssi);
+      DF(OK("from %u: '%s' (%idBm)"), response.from, response.message, response.rssi);
     } else {
-      DL(NOK("no response"));
+      D(NOK("no response"));
     }
+    DL("");
+    rfm69.sleep();
 
     counter++;
     clock.sleep_for(8192);
