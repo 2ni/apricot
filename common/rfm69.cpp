@@ -32,11 +32,11 @@ void RFM69::init_vars(pins_t pin_cs, pins_t pin_interrupt) {
   this->power_level = 23;
  }
 
-uint8_t RFM69::init(uint8_t node_id, uint8_t network_id) {
+uint8_t RFM69::init(uint32_t node_id, uint8_t network_id) {
   return this->init(868, node_id, network_id);
 }
 
-uint8_t RFM69::init(uint16_t freq, uint8_t node_id, uint8_t network_id) {
+uint8_t RFM69::init(uint16_t freq, uint32_t node_id, uint8_t network_id) {
   const uint8_t CONFIG[][2] = {
     /* 0x01 */ { REG_OPMODE, RF_OPMODE_SEQUENCER_ON | RF_OPMODE_LISTEN_OFF | RF_OPMODE_STANDBY },
     /* 0x02 */ { REG_DATAMODUL, RF_DATAMODUL_DATAMODE_PACKET | RF_DATAMODUL_MODULATIONTYPE_FSK | RF_DATAMODUL_MODULATIONSHAPING_00 }, // no shaping
@@ -245,7 +245,7 @@ void RFM69::set_high_power_regs(uint8_t enable) {
   this->write_reg(REG_TESTPA2, enable ? 0x7C : 0x70);
 }
 
-void RFM69::send_frame(uint8_t to, const void* buffer, uint8_t size, uint8_t request_ack, uint8_t send_ack) {
+void RFM69::send_frame(uint32_t to, const void* buffer, uint8_t size, uint8_t request_ack, uint8_t send_ack) {
   // D("sending | ");
   this->set_mode(STANDBY); // turn off receiver to prevent reception while filling fifo
   while ((this->read_reg(REG_IRQFLAGS1) & RF_IRQFLAGS1_MODEREADY) == 0x00); // wait for ModeReady
@@ -261,9 +261,13 @@ void RFM69::send_frame(uint8_t to, const void* buffer, uint8_t size, uint8_t req
   // write to FIFO
   this->select();
   spi_transfer_byte(REG_FIFO | 0x80);
-  spi_transfer_byte(size + 3); // TODO do not hard code packet met data size
-  spi_transfer_byte(to);
-  spi_transfer_byte(this->node_id);
+  spi_transfer_byte(size + 7);
+  spi_transfer_byte((uint8_t)(to >> 16));
+  spi_transfer_byte((uint8_t)(to >> 8));
+  spi_transfer_byte((uint8_t)to);
+  spi_transfer_byte((uint8_t)(this->node_id >> 16));
+  spi_transfer_byte((uint8_t)(this->node_id >> 8));
+  spi_transfer_byte((uint8_t)this->node_id);
   spi_transfer_byte(ctl_byte);
 
   for (uint8_t i = 0; i < size; i++)
@@ -283,7 +287,7 @@ void RFM69::send_frame(uint8_t to, const void* buffer, uint8_t size, uint8_t req
   // DF("sent (%lu) | ", current_tick-start_tick);
 }
 
-uint8_t RFM69::send(uint8_t to, const void* buffer, uint8_t buffer_len, RFM69::Packet *response) {
+uint8_t RFM69::send(uint32_t to, const void* buffer, uint8_t buffer_len, RFM69::Packet *response) {
   this->write_reg(REG_PACKETCONFIG2, (this->read_reg(REG_PACKETCONFIG2) & 0xFB) | RF_PACKET2_RXRESTART); // avoid RX deadlocks
 
   // we passed a response object, so do ack communication and wait for answer
@@ -293,7 +297,7 @@ uint8_t RFM69::send(uint8_t to, const void* buffer, uint8_t buffer_len, RFM69::P
   return 1;
 }
 
-uint8_t RFM69::send_retry(uint8_t to, const void* buffer, uint8_t buffer_len, RFM69::Packet *response, uint8_t retries) {
+uint8_t RFM69::send_retry(uint32_t to, const void* buffer, uint8_t buffer_len, RFM69::Packet *response, uint8_t retries) {
   for (uint8_t i=0; i<retries; i++) {
     if (this->send(to, buffer, buffer_len, response)) {
       return 1;
@@ -337,20 +341,20 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
   spi_transfer_byte(REG_FIFO & 0x7F);
   uint8_t payload_len = spi_transfer_byte(0);
   payload_len = payload_len > 66 ? 66 : payload_len;
-  uint8_t to = spi_transfer_byte(0);
-  if (!(spy_mode || to == this->node_id || to == RFM69_BROADCAST_ADDR) || payload_len < 3) { // TODO do not hardcode packet meta data size
+  uint32_t to = ((uint32_t)spi_transfer_byte(0) << 16) | ((uint16_t)spi_transfer_byte(0) << 8) | spi_transfer_byte(0);
+  if (!(spy_mode || to == this->node_id || to == RFM69_BROADCAST_ADDR) || payload_len < 7) {
     D("not for us | ");
     this->unselect();
     return 0;
   }
 
-  response->from = spi_transfer_byte(0);
+  response->from = ((uint32_t)spi_transfer_byte(0) << 16) | ((uint16_t)spi_transfer_byte(0) << 8) | spi_transfer_byte(0);
   uint8_t ctl_byte = spi_transfer_byte(0);
   uint8_t ack_received = ctl_byte & RFM69_CTL_SENDACK; // extract ACK-received flag
   uint8_t ack_requested = ctl_byte & RFM69_CTL_REQACK; // extract ACK-requested flag
 
   // read data
-  uint8_t datalen = payload_len - 3; // TODO do not hardcode packet meta data size. uint8_t len, uint8_t to, uint8_t from, uint8_t ctl
+  uint8_t datalen = payload_len - 7; // uint8_t len, uint24_t to, uint24t from, uint8_t ctl
   for (uint8_t i = 0; i < datalen; i++) {
       response->message[i] = spi_transfer_byte(0);
   }
