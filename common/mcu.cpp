@@ -37,7 +37,7 @@ void mcu_init(uint8_t enable_rx) {
 
 /*
  * get current voltage of power, aka battery
- * used resistor divider 1M - 220k, 1.5v internale reference
+ * used resistor divider 1M - 220k, 1.5v internal reference
  * returns precision 1/100 volt, eg 495 -> 4.95v
  * max vbat: 8.3v (1.5v ref)
  *           6.1v (1.1v ref)
