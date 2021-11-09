@@ -59,7 +59,7 @@ void uart_send_string(char* s);
 void uart_send_string_p(const char* s);
 void uart_send_digit(uint16_t value, uint8_t base=10);
 void uart_u2c(char *buf, uint16_t value, uint8_t precision=2);
-void uart_arr(const char *name, uint8_t *arr, uint8_t len);
+void uart_arr(const char *name, uint8_t *arr, uint8_t len, uint8_t new_line=1);
 uint32_t get_deviceid();
 
 #endif
