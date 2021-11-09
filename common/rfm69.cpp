@@ -355,6 +355,7 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
 
   // read data
   uint8_t datalen = payload_len - 7; // uint8_t len, uint24_t to, uint24t from, uint8_t ctl
+  response->len = datalen;
   for (uint8_t i = 0; i < datalen; i++) {
       response->message[i] = spi_transfer_byte(0);
   }

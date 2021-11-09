@@ -7,10 +7,11 @@
 #include <avr/io.h>
 #include "pins.h"
 
-#define RFM69_MAX_DATA_LEN       61 // 65 - 4 overhead (uint8_t len, uint8_t dest, uint8_t source, uint8_t ctl)
-#define RFM69_CTL_SENDACK       0x80
-#define RFM69_CTL_REQACK        0x40
-#define RFM69_BROADCAST_ADDR    0
+#define RFM69_MAX_DATA_LEN   57 // 65 - 8 overhead (uint8_t len, uint24_t dest, uint24_t source, uint8_t ctl)
+#define RFM69_CTL_SENDACK    0x80
+#define RFM69_CTL_REQACK     0x40
+#define RFM69_CTL_RSSI       0x20
+#define RFM69_BROADCAST_ADDR 0
 
 class RFM69 {
   public:
@@ -24,6 +25,7 @@ class RFM69 {
 
     typedef struct {
       uint8_t message[RFM69_MAX_DATA_LEN+1];
+      uint8_t len;
       uint32_t from;
       int16_t rssi;
     } Packet;
@@ -51,11 +53,11 @@ class RFM69 {
 
   private:
     Mode mode;
-    pins_t pin_cs;
-    uint8_t power_level;
+    pins_t   pin_cs;
+    uint8_t  power_level;
     uint32_t node_id;
-    uint8_t spy_mode;
-    void    init_vars(pins_t pins_cs, pins_t pin_interrupt);
+    uint8_t  spy_mode;
+    void     init_vars(pins_t pins_cs, pins_t pin_interrupt);
 
     void     set_mode(Mode mode);
     void     select();
