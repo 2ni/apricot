@@ -1,3 +1,3 @@
 ### Packet format
 
-<img src="qmapshack.png" width="600" />
+<img src="rfm69-packet.png" width="600" />
