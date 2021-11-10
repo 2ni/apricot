@@ -12,11 +12,14 @@ A node can therefore send and receive 16 different types of datapackets each, wh
 | ---- | -----    | ------ | -----------                                          |
 | 0x00 | debug    | 1      | used to debug, eg as counter                         |
 | 0x01 | vcc      | 2      | voltage of power source                              |
+| 0x02 | rssi     | 1      | last received RSSI as uint8_t                        |
 | ...  |          |        |                                                      |
 | 0x08 | humidtiy | 4      | returns humidity (2 bytes) and temperature (2 bytes) |
 
 **upload types (gateway -> node, ie returned with ack)** 
-| type | name      | length | description                  |
-| -    | -         | -      | -                            |
-| 0x00 | debug     | 1      | used to debug, eg as counter |
-| 0x01 | timestamp | 4      | current timestamp            |
+| type | name      | length | description                   |
+| -    | -         | -      | -                             |
+| 0x00 | debug     | 1      | used to debug, eg as counter  |
+| 0x01 | timestamp | 4      | current timestamp             |
+| 0x02 | rssi      | 1      | last received RSSI as uint8_t |
+| 0x03 | trxpwr    | 1      | increment/decrement power     |
