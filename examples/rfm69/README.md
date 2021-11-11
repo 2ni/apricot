@@ -13,7 +13,7 @@ A node can therefore send and receive 16 different types of datapackets each, wh
 | 0x00 | debug    | 1      | used to debug, eg as counter                         |
 | 0x01 | vcc      | 2      | voltage of power source, 522 = 5.22v                 |
 | 0x02 | temp     | 2      | temperature on pcb, p.475 in datasheet               |
-| 0x03 | rssi     | 1/2    | last received RSSI as uint8_t and inc/dec power      |
+| 0x03 | rssi     | 1 or 2 | last received RSSI as uint8_t and inc/dec power      |
 | ...  |          |        |                                                      |
 | 0x08 | humidtiy | 4      | returns humidity (2 bytes) and temperature (2 bytes) |
 
@@ -23,4 +23,4 @@ A node can therefore send and receive 16 different types of datapackets each, wh
 | 0x00 | debug     | 1      | used to debug, eg as counter                    |
 | 0x01 | timestamp | 4      | current timestamp                               |
 | 0x02 |           |        |                                                 |
-| 0x03 | rssi      | 1      | last received RSSI as uint8_t and inc/dec power |
+| 0x03 | rssi      | 1 or 2 | last received RSSI as uint8_t and inc/dec power |
