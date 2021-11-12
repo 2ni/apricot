@@ -24,7 +24,7 @@ class RFM69 {
     } Mode;
 
     typedef struct {
-      uint8_t message[RFM69_MAX_DATA_LEN+1];
+      uint8_t payload[RFM69_MAX_DATA_LEN+1];
       uint8_t len;
       uint32_t from;
       int16_t rssi;
@@ -40,6 +40,8 @@ class RFM69 {
     void     set_high_power();
     void     set_network(uint8_t id);
     void     set_power_level(uint8_t level);
+    uint8_t  set_power_level_relative(int8_t level_change);
+    uint8_t  get_power_level();
     uint8_t  send(uint32_t to, const void* buffer, uint8_t buffer_len, RFM69::Packet *response = 0);
     uint8_t  send_retry(uint32_t to, const void* buffer, uint8_t buffer_len, RFM69::Packet *response, uint8_t retries);
     uint8_t  listen(RFM69::Packet *response, uint8_t timeout_enabled = 1);

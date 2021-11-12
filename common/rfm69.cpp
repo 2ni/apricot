@@ -234,6 +234,19 @@ void RFM69::set_power_level(uint8_t level) {
   this->write_reg(REG_PALEVEL, pa_setting | level);
 }
 
+uint8_t RFM69::set_power_level_relative(int8_t level_change) {
+  if ((this->power_level + level_change > 23) || ((int8_t)(this->power_level + level_change) < 0)) {
+    return 0;
+  }
+
+  this->set_power_level(this->power_level + level_change);
+  return 1;
+}
+
+uint8_t RFM69::get_power_level() {
+  return this->power_level;
+}
+
 /*
  * internal function - for HW/HCW only:
  * enables HiPower for 18-20dBm output
@@ -321,7 +334,7 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
   this->isr = 0;
   uint32_t start_tick = clock.current_tick;
   uint32_t current_tick = start_tick;
-  uint32_t limit = 600; // timeout: ms*32768/8000
+  uint32_t limit = 200; // timeout: ms*32768/8000
   if (timeout_enabled) {
     while (((current_tick - start_tick) < limit) && !this->isr) {
       current_tick = clock.current_tick;
@@ -329,6 +342,7 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
   } else {
     while (!this->isr);
   }
+  // DF("%lu ticks | ", current_tick-start_tick);
 
   if (!(this->read_reg(REG_IRQFLAGS2) & RF_IRQFLAGS2_PAYLOADREADY)) {
     DF(NOK("no data (%lu)") " | ", current_tick-start_tick);
@@ -357,9 +371,9 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
   uint8_t datalen = payload_len - 7; // uint8_t len, uint24_t to, uint24t from, uint8_t ctl
   response->len = datalen;
   for (uint8_t i = 0; i < datalen; i++) {
-      response->message[i] = spi_transfer_byte(0);
+      response->payload[i] = spi_transfer_byte(0);
   }
-  if (datalen < RFM69_MAX_DATA_LEN) response->message[datalen] = 0; // add null at end of string
+  if (datalen < RFM69_MAX_DATA_LEN) response->payload[datalen] = 0; // add null at end of string
   this->unselect();
 
   response->rssi = this->read_rssi();
@@ -369,7 +383,7 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
     this->send_frame(response->from, "", 0, 0, 1);
   }
 
-  // DF("data from %u: '%s' (%lu)\n", response->from, response->message, current_tick-start_tick);
+  // DF("data from %u: '%s' (%lu)\n", response->from, response->payload, current_tick-start_tick);
   return 1;
  }
 
