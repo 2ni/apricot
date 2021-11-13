@@ -234,6 +234,9 @@ void RFM69::set_power_level(uint8_t level) {
   this->write_reg(REG_PALEVEL, pa_setting | level);
 }
 
+/*
+ * return 0 if limit reached
+ */
 uint8_t RFM69::set_power_level_relative(int8_t level_change) {
   if ((this->power_level + level_change > 23) || ((int8_t)(this->power_level + level_change) < 0)) {
     return 0;
