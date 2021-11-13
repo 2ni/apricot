@@ -1,6 +1,6 @@
 ## Packet format
 
-<img src="rfm69-packet.png" width="1000" />
+<img src="rfm69-packet.png" height="130px" />
 
 ## datapacket types
 A datapacket consist of a type/len byte followed by len  data bytes. The 1st byte defines what kind of packet it is (4bits) and how long it is (4bits).
@@ -28,4 +28,4 @@ A node can therefore send and receive 16 different types of datapackets each, wh
 ### RSSI ctrl
 The RSSI ctrl byte gives information about power transmission. The lower 4 bits define the amount of change to the power transmission. The higher 4 bits are the control bits. The highest bit is set if a limit is reached, eg power = 0 and change = -1.
 
-<img src="rfm69-datapacket-rssi.png" />
+<img src="rfm69-datapacket-rssi.png" height="104px" />
