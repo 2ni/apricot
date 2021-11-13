@@ -28,7 +28,7 @@ A node can therefore send and receive 16 different types of datapackets each, wh
 ### RSSI ctrl
 The RSSI ctrl byte gives information about power transmission:
 - the lower 4 bits define the amount of change to the power transmission
-- bit 0x80: should be set to inform gateway if power_level reached a limit (0 or 23)
-- bit 0x40: should be set to inform gateway to reset atc to max power, ie if node doesn't get back ack after several trials
+- limit bit 0x80: should be set to inform gateway if power_level reached a limit (0 or 23)
+- reset bit 0x40: should be set to inform gateway to reset atc to max power, ie if node doesn't get back ack after several trials
 
 <img src="rfm69-datapacket-rssi.png" height="104px" />
