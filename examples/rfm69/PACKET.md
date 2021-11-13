@@ -89,7 +89,8 @@ table.rfm69 td.data.empty { background: linear-gradient(to right, #e79b9b 0%, #e
     <td class="values">1 or 2</td>
 
     <td class="values">limit <span>1bit</span></td>
-    <td class="values" colspan=3>res <span>3bits</span></td>
+    <td class="values">reset <span>1bit</span></td>
+    <td class="values" colspan=2>res <span>2bits</span></td>
 
     <td class="values">-7 ≤ x ≤ 7</td>
     <td class="values">0 ≤ x ≤ 255</td>
