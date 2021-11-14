@@ -21,7 +21,8 @@ int main(void) {
   uint16_t vcc;
   uint8_t rssi_limit_reached = 0;
   int8_t pwrchange;
-  uint8_t last_rssi;
+  uint8_t rssi_last;
+  uint8_t rssi_reset = 1; // ensure we start from scratch when powering up
 
   uint8_t version = rfm69.init(get_deviceid(), NETWORK);
   if (!version) {
@@ -30,8 +31,6 @@ int main(void) {
     DF("RFM69 Version: 0x%02x\n", version);
   }
 
-
-  rfm69.set_power_level(10);
   while (1) {
     vcc = get_vin();
     len = 5;
@@ -41,19 +40,20 @@ int main(void) {
     msg[3] = vcc >> 8;
     msg[4] = vcc & 0xff;
 
-    if (rssi_limit_reached) {
-      rssi_limit_reached = 0;
+    if (rssi_limit_reached || rssi_reset) {
       msg[5] = (0x03<<4) | 0x02; // type: rssi (0x03), 2bytes
-      msg[6] = 0x80;
-      msg[7] = last_rssi;
+      msg[6] = (rssi_limit_reached ? 0x80 : 0x00) | (rssi_reset ? 0x40 : 0x00);  // ctrl (limit, reset)
+      msg[7] = rssi_last;
       len += 3;
+      rssi_limit_reached = 0;
+      rssi_reset = 0;
     }
 
     DF("sending %03u | ", counter);
     if (rfm69.send_retry(GATEWAY, msg, len, &response, 2)) {
-      last_rssi = (uint8_t)(-response.rssi);
+      rssi_last = (uint8_t)(-response.rssi);
       // DF(OK("from 0x%06lX: '%s' (%idBm)") "\n", response.from, response.payload, response.rssi);
-      DF("ack (%idBm) | ", response.rssi);
+      DF(OK("ack") " (%idBm) | ", response.rssi);
       uart_arr("raw response", response.payload, response.len, 0);
       D(" | ");
       uint8_t i = 0;
