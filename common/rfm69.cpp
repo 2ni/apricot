@@ -238,12 +238,15 @@ void RFM69::set_power_level(uint8_t level) {
  * return 0 if limit reached
  */
 uint8_t RFM69::set_power_level_relative(int8_t level_change) {
-  if ((this->power_level + level_change > 23) || ((int8_t)(this->power_level + level_change) < 0)) {
+  if ((this->power_level == 23 && level_change > 0) || ((this->power_level == 0 && level_change < 0))) {
     return 0;
   }
 
-  this->set_power_level(this->power_level + level_change);
-  return 1;
+  int8_t new_level = this->power_level + level_change;
+  if (new_level < 0) new_level = 0;
+  if (new_level > 23) new_level = 23;
+  this->set_power_level(new_level);
+  return (new_level == 0 || new_level == 23) ? 0 : 1;
 }
 
 uint8_t RFM69::get_power_level() {
@@ -345,7 +348,7 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
   } else {
     while (!this->isr);
   }
-  // DF("%lu ticks | ", current_tick-start_tick);
+  DF("%lu ticks | ", current_tick-start_tick);
 
   if (!(this->read_reg(REG_IRQFLAGS2) & RF_IRQFLAGS2_PAYLOADREADY)) {
     DF(NOK("no data (%lu)") " | ", current_tick-start_tick);
