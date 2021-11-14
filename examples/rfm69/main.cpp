@@ -17,12 +17,13 @@ int main(void) {
   RFM69::Packet response;
   uint8_t counter = 0;
   uint8_t len;
-  char msg[8];
+  char msg[10];
   uint16_t vcc;
   uint8_t rssi_limit_reached = 0;
   int8_t pwrchange;
-  uint8_t rssi_last;
+  uint8_t rssi_last = 0;
   uint8_t rssi_reset = 1; // ensure we start from scratch when powering up
+  uint8_t i;
 
   uint8_t version = rfm69.init(get_deviceid(), NETWORK);
   if (!version) {
@@ -34,23 +35,24 @@ int main(void) {
   while (1) {
     vcc = get_vin();
     len = 5;
-    msg[0] = (0x00<<4) | 0x01; // type: dbg (0x00), 1byte
-    msg[1] = counter;
-    msg[2] = (0x01<<4) | 0x02; // type: vcc (0x01), 2bytes
-    msg[3] = vcc >> 8;
-    msg[4] = vcc & 0xff;
+    i = 0;
+    msg[i++] = (0x00<<4) | 0x01; // type: dbg (0x00), 1byte
+    msg[i++] = counter;
+    msg[i++] = (0x01<<4) | 0x02; // type: vcc (0x01), 2bytes
+    msg[i++] = vcc >> 8;
+    msg[i++] = vcc & 0xff;
 
     if (rssi_limit_reached || rssi_reset) {
-      msg[5] = (0x03<<4) | 0x02; // type: rssi (0x03), 2bytes
-      msg[6] = (rssi_limit_reached ? 0x80 : 0x00) | (rssi_reset ? 0x40 : 0x00);  // ctrl (limit, reset)
-      msg[7] = rssi_last;
+      msg[i++] = (0x03<<4) | 0x02; // type: rssi (0x03), 2bytes
+      msg[i++] = (rssi_limit_reached ? 0x80 : 0x00) | (rssi_reset ? 0x40 : 0x00);  // ctrl (limit, reset)
+      msg[i++] = rssi_last;
       len += 3;
       rssi_limit_reached = 0;
-      rssi_reset = 0;
     }
 
     DF("sending %03u | ", counter);
     if (rfm69.send_retry(GATEWAY, msg, len, &response, 2)) {
+      rssi_reset = 0;
       rssi_last = (uint8_t)(-response.rssi);
       // DF(OK("from 0x%06lX: '%s' (%idBm)") "\n", response.from, response.payload, response.rssi);
       DF(OK("ack") " (%idBm) | ", response.rssi);
@@ -74,7 +76,7 @@ int main(void) {
             DF(OK("timestamp: %lu") " | ", timestamp);
             break;
           case 0x03: // type: rssi (0x03), 1 byte
-            pwrchange = response.payload[i] & 0x0f | (response.payload[i] & 0x08 ? 0xf0 : 0x00); // convert int4_t to int8_t
+            pwrchange = (response.payload[i] & 0x0f) | (response.payload[i] & 0x08 ? 0xf0 : 0x00); // convert int4_t to int8_t
             rssi_limit_reached = !rfm69.set_power_level_relative(pwrchange);
             DF("pwr: %i -> %u  (%u) | ", pwrchange, rfm69.get_power_level(), rssi_limit_reached);
             break;
