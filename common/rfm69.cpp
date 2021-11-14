@@ -298,7 +298,7 @@ void RFM69::send_frame(uint32_t to, const void* buffer, uint8_t size, uint8_t re
   // TODO sometimes PACKETSENT flags are not set and blocks
   uint32_t start_tick = clock.current_tick;
   uint32_t current_tick = start_tick;
-  uint32_t limit = 15; // timeout: ms*32768/8000
+  uint32_t limit = 400; // timeout: ms*32768/8000
   while (((current_tick - start_tick) < limit) && ((this->read_reg(REG_IRQFLAGS2) & RF_IRQFLAGS2_PACKETSENT) == 0x00)) {
     current_tick = clock.current_tick;
   }
@@ -340,7 +340,7 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
   this->isr = 0;
   uint32_t start_tick = clock.current_tick;
   uint32_t current_tick = start_tick;
-  uint32_t limit = 200; // timeout: ms*32768/8000
+  uint32_t limit = 300; // timeout: ms*32768/8000
   if (timeout_enabled) {
     while (((current_tick - start_tick) < limit) && !this->isr) {
       current_tick = clock.current_tick;
@@ -348,7 +348,7 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
   } else {
     while (!this->isr);
   }
-  DF("%lu ticks | ", current_tick-start_tick);
+  // DF("%lu ticks | ", current_tick-start_tick);
 
   if (!(this->read_reg(REG_IRQFLAGS2) & RF_IRQFLAGS2_PAYLOADREADY)) {
     DF(NOK("no data (%lu)") " | ", current_tick-start_tick);
