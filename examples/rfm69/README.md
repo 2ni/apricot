@@ -32,6 +32,7 @@ A node can therefore send and receive 16 different types of datapackets each, wh
 The RSSI ctrl byte gives information about power transmission:
 - the lower 4 bits define the amount of change to the power transmission
 -  ctrl byte
+
 | bit | mask | description                                                                    |
 | -   | -    | -                                                                              |
 | 7   | 0x80 | set if node reached a limit (0 or 23) so the gateway doesn't send more changes |
