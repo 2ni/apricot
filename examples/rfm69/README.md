@@ -33,11 +33,11 @@ The RSSI ctrl byte gives information about power transmission:
 - the lower 4 bits define the amount of change to the power transmission
 -  ctrl byte
 
-| bit | mask | description                                                                    |
-| -   | -    | -                                                                              |
-| 7   | 0x80 | set if node reached a limit (0 or 23) so the gateway doesn't send more changes |
-| 6   | 0x40 | set to request a reset of the atc, eg on startup of the node                   |
-| 5   | 0x20 | set to request the last rssi value. Should be sent with the next transmission  |
-| 4   | 0x10 | reserved for future use                                                        |
+| bit | mask | name    | description                                                                    |
+| -   | -    | -       |                                                                                |
+| 7   | 0x80 | limit   | set if node reached a limit (0 or 23) so the gateway doesn't send more changes |
+| 6   | 0x40 | reset   | set to request a reset of the atc, eg on startup of the node                   |
+| 5   | 0x20 | request | set to request the last rssi value. Should be sent with the next transmission  |
+| 4   | 0x10 | res     | for future use                                                                 |
 
 <img src="rfm69-datapacket-rssi.png" height="104px" />
