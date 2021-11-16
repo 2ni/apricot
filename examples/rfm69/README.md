@@ -1,3 +1,6 @@
+# About
+This example is about a node transferring data via a RFM69 to a [gateway](https://github.com/2ni/rfm69-gateway). The format of the packets are described below. They're flexible and can vary for each node (type). On the gateway a rule should be defined accordingly (by node or node type) to understand the data received.
+
 ## Packet format
 
 <img src="rfm69-packet.png" height="130px" />
@@ -28,7 +31,12 @@ A node can therefore send and receive 16 different types of datapackets each, wh
 ### RSSI ctrl
 The RSSI ctrl byte gives information about power transmission:
 - the lower 4 bits define the amount of change to the power transmission
-- limit bit 0x80: should be set to inform gateway if power_level reached a limit (0 or 23)
-- reset bit 0x40: should be set to inform gateway to reset atc to max power, ie if node doesn't get back ack after several trials
+-  ctrl byte
+| bit | mask | description                                                                    |
+| -   | -    | -                                                                              |
+| 7   | 0x80 | set if node reached a limit (0 or 23) so the gateway doesn't send more changes |
+| 6   | 0x40 | set to request a reset of the atc, eg on startup of the node                   |
+| 5   | 0x20 | set to request the last rssi value. Should be sent with the next transmission  |
+| 4   | 0x10 | reserved for future use                                                        |
 
 <img src="rfm69-datapacket-rssi.png" height="104px" />
