@@ -72,7 +72,7 @@ table.rfm69 td.data.empty { background: linear-gradient(to right, #e79b9b 0%, #e
   <tr class="payload"><td colspan=9>datapacket RSSI <span>1 or 2bytes</td></tr>
   <tr>
     <td colspan=2 class="datapacket typelen">type | len <span>1byte</span></td>
-    <td colspan=5 class="datapacket data">data <span>1byte</span></td>
+    <td colspan=6 class="datapacket data">data <span>1byte</span></td>
     <td class="datapacket data">data <span>1byte</span></td>
   </tr>
   <tr>
@@ -90,7 +90,8 @@ table.rfm69 td.data.empty { background: linear-gradient(to right, #e79b9b 0%, #e
 
     <td class="values">limit <span>1bit</span></td>
     <td class="values">reset <span>1bit</span></td>
-    <td class="values" colspan=2>res <span>2bits</span></td>
+    <td class="values">request <span>1bit</span></td>
+    <td class="values">res <span>2bits</span></td>
 
     <td class="values">-7 ≤ x ≤ 7</td>
     <td class="values">0 ≤ x ≤ 255</td>
