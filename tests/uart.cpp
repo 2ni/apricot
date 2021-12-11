@@ -137,10 +137,10 @@ void uart_u2c(char *buf, uint16_t value, uint8_t precision) {
 }
 
 
-void uart_arr(const char *name, uint8_t *arr, uint8_t len) {
+void uart_arr(const char *name, uint8_t *arr, uint8_t len, uint8_t new_line) {
   DF("%s:", name);
   for(uint8_t i=0; i<len; i++) {
     DF(" %02x", arr[i]);
   }
-  DL("");
+  if (new_line) DL("");
 }
