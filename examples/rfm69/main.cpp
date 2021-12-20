@@ -17,13 +17,15 @@ int main(void) {
   RFM69::Packet response;
   uint8_t counter = 0;
   uint8_t len;
-  char msg[10];
+  uint8_t msg[10];
   uint16_t vcc;
   uint8_t rssi_limit_reached = 0;
   int8_t pwrchange;
   uint8_t rssi_last = 0;
   uint8_t rssi_reset = 1; // ensure we start from scratch when powering up
+  uint8_t rssi_request = 0;
   uint8_t i;
+  uint8_t fail_count = 0;
 
   uint8_t version = rfm69.init(get_deviceid(), NETWORK);
   if (!version) {
@@ -36,28 +38,32 @@ int main(void) {
     vcc = get_vin();
     len = 5;
     i = 0;
+
+    DF("sending %03u | pwr: %u | ", counter, rfm69.get_power_level());
     msg[i++] = (0x00<<4) | 0x01; // type: dbg (0x00), 1byte
     msg[i++] = counter;
     msg[i++] = (0x01<<4) | 0x02; // type: vcc (0x01), 2bytes
     msg[i++] = vcc >> 8;
     msg[i++] = vcc & 0xff;
 
-    if (rssi_limit_reached || rssi_reset) {
+    if (rssi_limit_reached || rssi_reset || rssi_request) {
+      DF("lim: %u res: %u requ: %u rssi: %udBm | ", rssi_limit_reached?1:0, rssi_reset?1:0, rssi_request?1:0, rssi_last);
       msg[i++] = (0x03<<4) | 0x02; // type: rssi (0x03), 2bytes
-      msg[i++] = (rssi_limit_reached ? 0x80 : 0x00) | (rssi_reset ? 0x40 : 0x00);  // ctrl (limit, reset)
+      msg[i++] = (rssi_limit_reached ? 0x80 : 0x00) | (rssi_reset ? 0x40 : 0x00) | (rssi_request ? 0x20 : 0x00) ;  // ctrl (limit, reset, request)
       msg[i++] = rssi_last;
       len += 3;
       rssi_limit_reached = 0;
+      rssi_request = 0;
     }
+    uart_arr("raw send", msg, len, 0);
+    DL("");
 
-    DF("sending %03u | ", counter);
     if (rfm69.send_retry(GATEWAY, msg, len, &response, 2)) {
       rssi_reset = 0;
+      fail_count = 5;
       rssi_last = (uint8_t)(-response.rssi);
       // DF(OK("from 0x%06lX: '%s' (%idBm)") "\n", response.from, response.payload, response.rssi);
-      DF(OK("ack") " (%idBm) | ", response.rssi);
-      uart_arr("raw response", response.payload, response.len, 0);
-      D(" | ");
+      DF("  " OK("ack") " (%idBm) | ", response.rssi);
       uint8_t i = 0;
       uint8_t first_byte;
       uint32_t timestamp;
@@ -77,8 +83,9 @@ int main(void) {
             break;
           case 0x03: // type: rssi (0x03), 1 byte
             pwrchange = (response.payload[i] & 0x0f) | (response.payload[i] & 0x08 ? 0xf0 : 0x00); // convert int4_t to int8_t
-            rssi_limit_reached = !rfm69.set_power_level_relative(pwrchange);
-            DF("pwr: %i -> %u  (%u) | ", pwrchange, rfm69.get_power_level(), rssi_limit_reached);
+            rssi_request = response.payload[i] & 0x20;
+            rssi_limit_reached = pwrchange && !rfm69.set_power_level_relative(pwrchange);
+            DF("pwr change: %i rssi_request: %i | ", pwrchange, rssi_request?1:0);
             break;
           default:
             DF(NOK("unknown type 0x%02x") " | ", data_type);
@@ -86,9 +93,17 @@ int main(void) {
         }
         i += data_len;
       }
+      uart_arr("raw", response.payload, response.len, 0);
       DL("");
     } else {
-      DL(NOK("no response"));
+      D(NOK("no response | "));
+      if (--fail_count == 0) {
+        // failed receiving data for more than x times
+        rssi_reset = 1;
+        rfm69.set_power_level(23);
+        D("reset power | ");
+      }
+      DL("");
     }
     rfm69.sleep();
 
