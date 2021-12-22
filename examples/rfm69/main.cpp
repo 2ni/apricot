@@ -6,36 +6,42 @@
 #include "mcu.h"
 #include "rfm69.h"
 #include "rfm69wrapper.h"
+#include "humidity_sensor.h"
 
 #define GATEWAY 99
 #define NETWORK 33
 
-#define NUM_PACKETS 2 // we send 2 packets (vcc and debug)
+#define NUM_PACKETS 4 // we send 2 packets (vcc, debug count, humidity, temperature)
 
 //*
 
-  // packet types we can get from the gateway (upload types) or send to gateway (download types)
-  namespace TYPE_UPLOAD {
-    typedef enum {
-      TIMESTAMP = 0x01,
-    } Type_upload;
-  }
+// packet types we can get from the gateway (upload types) or send to gateway (download types)
+namespace TYPE_UPLOAD {
+  typedef enum {
+    TIMESTAMP = 0x01,
+  } Type_upload;
+}
 
-  namespace TYPE_DOWNLOAD {
-    typedef enum {
-      DBG = 0x00,
-      VCC = 0x01,
-      TEMP = 0x02,
-      RSSI = 0x03, // reserved
-      HUM = 0x08,
-    } Type_download;
-  }
+namespace TYPE_DOWNLOAD {
+  typedef enum {
+    DBG = 0x00,         // 1byte
+    VCC = 0x01,         // 2bytes
+    TEMP = 0x02,        // 2bytes
+    RSSI = 0x03,        // reserved (2bytes)
+    SENSOR_HUM = 0x08,  // 1byte (relative humidity)
+    SENSOR_TEMP = 0x09, // 2bytes
+  } Type_download;
+}
 
-  int main(void) {
+RFM69WRAPPER rf;
+HUMIDITYSENSOR sensor(&PA5, &PA6, &PA3);
+
+int main(void) {
   mcu_init();
-  RFM69WRAPPER rf;
 
   int16_t vcc;
+  uint8_t sensor_humidity;
+  uint16_t sensor_temperature;
   uint8_t counter = 0;
   uint32_t timestamp;
   RFM69WRAPPER::WPacket packets[2];
@@ -46,6 +52,8 @@
 
   while (1) {
     vcc = get_vin();
+    sensor_temperature = sensor.get_temperature();
+    sensor_humidity = (uint8_t)sensor.get_humidity(1);
     packets[0].type = TYPE_DOWNLOAD::VCC;
     packets[0].len = 2;
     packets[0].payload[0] = vcc >> 8;
@@ -53,6 +61,14 @@
     packets[1].type = TYPE_DOWNLOAD::DBG;
     packets[1].len = 1;
     packets[1].payload[0] = counter;
+    packets[2].type = TYPE_DOWNLOAD::SENSOR_HUM;
+    packets[2].len = 1;
+    packets[2].payload[0] = sensor_humidity;
+    packets[3].type = TYPE_DOWNLOAD::SENSOR_TEMP;
+    packets[3].len = 2;
+    packets[3].payload[0] = sensor_temperature >> 8;
+    packets[3].payload[1] = sensor_temperature & 0xff;
+
     rf.send(packets, NUM_PACKETS, responses, &responses_len);
     for (uint8_t i=0; i<responses_len; i++) {
       switch (responses[i].type) {
