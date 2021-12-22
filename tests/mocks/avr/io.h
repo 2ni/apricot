@@ -5,6 +5,7 @@
 
 typedef volatile uint8_t register8_t;
 typedef volatile uint16_t register16_t;
+typedef volatile uint32_t register32_t;
 
 /*
 typedef signed char       int8_t;

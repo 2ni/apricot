@@ -5,10 +5,10 @@ CLK        = 10000000
 
 SRC        = .
 COMMONDIR  = ../common
-COMMON     = pins.cpp cmac.cpp aes.cpp lorawan.cpp rfm95.cpp
+COMMON     = pins.cpp cmac.cpp aes.cpp lorawan.cpp rfm95.cpp rfm69.cpp rfm69wrapper.cpp
 MOCKS      = ./mocks
 
-FLAGS      = -DDEBUG -std=c++11 -Wno-format # ignore lu warnings as different sizes
+FLAGS      = -DTEST -DDEBUG -std=c++11 -Wno-format # ignore lu warnings as different sizes
 CPPFLAGS   =
 
 CFLAGS     = -DF_CPU=$(CLK) -D__AVR_ATtiny3217__=attiny3217 $(FLAGS) -I $(MOCKS) -I $(COMMONDIR)

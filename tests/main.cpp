@@ -10,6 +10,7 @@
 #include "tests_lora.h"
 #include "tests_pgmspace.h"
 #include "tests_mac.h"
+#include "tests_rfm69.h"
 
 uint32_t m; // time counter used in lorawan.cpp
 
@@ -21,6 +22,11 @@ int main() {
 
   // test pgmspace
   test_result = tests_pgmspace();
+  number_of_passed += test_result.passed;
+  number_of_tests += test_result.total;
+
+  // test rfm69
+  test_result = tests_rfm69();
   number_of_passed += test_result.passed;
   number_of_tests += test_result.total;
 
