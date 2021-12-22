@@ -5,10 +5,76 @@
 #include "uart.h"
 #include "mcu.h"
 #include "rfm69.h"
+#include "rfm69wrapper.h"
 
-#define NODE 2
 #define GATEWAY 99
 #define NETWORK 33
+
+#define NUM_PACKETS 2 // we send 2 packets (vcc and debug)
+
+//*
+
+  // packet types we can get from the gateway (upload types) or send to gateway (download types)
+  namespace TYPE_UPLOAD {
+    typedef enum {
+      TIMESTAMP = 0x01,
+    } Type_upload;
+  }
+
+  namespace TYPE_DOWNLOAD {
+    typedef enum {
+      DBG = 0x00,
+      VCC = 0x01,
+      TEMP = 0x02,
+      RSSI = 0x03, // reserved
+      HUM = 0x08,
+    } Type_download;
+  }
+
+  int main(void) {
+  mcu_init();
+  RFM69WRAPPER rf;
+
+  int16_t vcc;
+  uint8_t counter = 0;
+  uint32_t timestamp;
+  RFM69WRAPPER::WPacket packets[2];
+  uint8_t responses_len;
+  RFM69WRAPPER::WPacket responses[10];
+
+  rf.init(GATEWAY, NETWORK);
+
+  while (1) {
+    vcc = get_vin();
+    packets[0].type = TYPE_DOWNLOAD::VCC;
+    packets[0].len = NUM_PACKETS;
+    packets[0].payload[0] = vcc >> 8;
+    packets[0].payload[1] = vcc & 0xff;
+    packets[1].type = TYPE_DOWNLOAD::DBG;
+    packets[1].len = 1;
+    packets[1].payload[0] = counter;
+    rf.send(packets, NUM_PACKETS, responses, &responses_len);
+    for (uint8_t i=0; i<responses_len; i++) {
+      switch (responses[i].type) {
+        case TYPE_UPLOAD::TIMESTAMP:
+          timestamp = ((uint32_t)responses[i].payload[0] << 24)
+                | ((uint32_t)responses[i].payload[1] << 16)
+                | ((uint16_t)responses[i].payload[2] << 8)
+                | responses[i].payload[3];
+
+          DF("  " OK("timestamp: %lu") "\n", timestamp);
+        break;
+        default:
+          DF(NOK("unknown type: 0x%02x") "\n", responses[i].type);
+          uart_arr("", responses[i].payload, responses[i].len);
+        break;
+      }
+    }
+    counter++;
+    clock.sleep_for(8192);
+  }
+}
+/*/
 
 int main(void) {
   mcu_init();
@@ -111,3 +177,4 @@ int main(void) {
     clock.sleep_for(8192);
   }
 }
+//*/
