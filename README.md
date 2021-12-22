@@ -6,7 +6,7 @@ The code also support ATtiny1604 (beta).
 It's the successor of the [forgetmenot board](https://github.com/2ni/forgetmenot). [Schematics and pcb](https://easyeda.com/vkbs/apricot) are also available.
 
 There are many examples in the [examples](/examples) section such as:
-- [lorawan node](examples/lorawan node) for the [thethingsnetwork](https://www.thethingsnetwork.org/) (code probably needs to be updated for V3 support)
+- [lorawan node](/examples/lorawan) for the [thethingsnetwork](https://www.thethingsnetwork.org/) (code probably needs to be updated for V3 support)
 - [rfm69 node/gateway network](/examples/rfm69), see readme in the folder fore more information
 - [ssd1306 display](/examples/ssd1306) example
 - [some sensor](/examples/sensors) handling, such as ISL29035 (light), SHT20 (temperature and humidity), LPS22HBTR (pressure)
