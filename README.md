@@ -1,15 +1,33 @@
-### DESCRIPTION
-This is a lorawan breakout board based on the attiny3217. It's the successor of the [forgetmenot board](https://github.com/2ni/forgetmenot). [Schematics and pcb](https://easyeda.com/vkbs/apricot) are also available.
+## DESCRIPTION
+This is a developer board for the chip ATtiny3217 from microchip. It's buils so it can be placed on a breadboard and extended with whatever you wish. The board can be extended with a RFM69 transmitter to send some data via radio. If wished a RFM95 can be soldered to act as a lorawan node.
+
+The code also support ATtiny1604 (beta).
+
+It's the successor of the [forgetmenot board](https://github.com/2ni/forgetmenot). [Schematics and pcb](https://easyeda.com/vkbs/apricot) are also available.
+
+There are many examples in the [examples](/examples) section such as:
+- [lorawan node](examples/lorawan node) for the [thethingsnetwork](https://www.thethingsnetwork.org/) (code probably needs to be updated for V3 support)
+- [rfm69 node/gateway network](/examples/rfm69), see readme in the folder fore more information
+- [ssd1306 display](/examples/ssd1306) example
+- [some sensor](/examples/sensors) handling, such as ISL29035 (light), SHT20 (temperature and humidity), LPS22HBTR (pressure)
+- [touch library](/examples/touch) to work with touch buttons
+- [sleep](/examples/sleep) examples
+- more examples and libraries are planned (eg infrared remote control, mppt solar charger, dcc train switches, ...)
+
 
 Main features:
 - only 1 usb needed for programming and debug output on uart
-- uses an RFM95 for lorawan
 - onboard 1 led and sensors (light sensor ISL29035, temperature&humidity sensor SHT20, pressure sensor LPS22HBTR)
 - dual power input handling
 - 32.768kHz quartz for precise sleep times (TOSC1, TOSC2)
 - esd protection
 - pinout supporting i2c, spi and general purpose pins
-- many [examples](/examples)
+- extended functions to print information via serial terminal
+- serial terminal is included, just run make serial to start it after having compiled an example
+- makefile to simplify handling
+- in the [common](/common) directory all base libraries such as twi, spi, touch, sensors are available
+- functions to simplify handling with pins, ie also adc, interrupts etc
+- a common timer counter is available if needed which is also updated in sleep mode, see [clock h](/common/clock.h)
 - for lorawan connect the following pins from the rfm95 to the main board (D0, D1, D2 is not needed):
 ```
 MI  - PC1
