@@ -47,7 +47,7 @@
   while (1) {
     vcc = get_vin();
     packets[0].type = TYPE_DOWNLOAD::VCC;
-    packets[0].len = NUM_PACKETS;
+    packets[0].len = 2;
     packets[0].payload[0] = vcc >> 8;
     packets[0].payload[1] = vcc & 0xff;
     packets[1].type = TYPE_DOWNLOAD::DBG;
