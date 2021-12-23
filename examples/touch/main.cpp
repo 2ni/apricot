@@ -13,10 +13,11 @@
 
 // 1: loop over 1sec
 // 2: use simple is_pressed looping over 50ms
-// 3: extended example as 2 but done manually
-#define EXAMPLE 2
+// 3: use simple is_pressed looping over 50ms with fn_init callback
+// 4: extended example as 2 but done manually
+#define EXAMPLE 3
 
-TOUCH button(&PB7);
+TOUCH button(&PA7);
 
 void released(TOUCH::Press_type type, uint32_t ticks) {
   DF("press: %s for %lus\n", type == TOUCH::SHORT ? "SHORT" : (type == TOUCH::LONG ? "LONG" : "VERYLONG"), ticks*8/32768);
@@ -24,6 +25,10 @@ void released(TOUCH::Press_type type, uint32_t ticks) {
 
 void released_seconds(TOUCH::Press_type type, uint32_t ticks) {
   DF("press: %s for %lus\n", type == TOUCH::SHORT ? "SHORT" : (type == TOUCH::LONG ? "LONG" : "VERYLONG"), ticks);
+}
+
+void init() {
+  DL("button pressed");
 }
 
 int main(void) {
@@ -49,6 +54,12 @@ int main(void) {
   }
 
 #elif EXAMPLE == 3
+  while (1) {
+    button.is_pressed(&released, &init);
+    clock.sleep_for(205); // 50ms*32768/8/1000 = 204.8
+  }
+
+#elif EXAMPLE == 4
 
   uint32_t start_tick = 0;
   uint8_t occupied = 0;

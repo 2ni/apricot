@@ -21,8 +21,9 @@ class TOUCH {
     uint16_t get_data();
     uint16_t get_avg();
     // 12288*8/32768 = 3sec, 20480*8/32768 = 5sec
-    uint8_t is_pressed(void (*fn)(Press_type, uint32_t), uint32_t tick_long, uint32_t tick_verylong);
-    uint8_t is_pressed(void (*fn)(Press_type, uint32_t) = 0, pins_t *led = &pins_led, uint32_t tick_long = 12288, uint32_t tick_verylong = 20480);
+    uint8_t is_pressed(void (*fn_released)(Press_type, uint32_t), uint32_t tick_long, uint32_t tick_verylong);
+    uint8_t is_pressed(void (*fn_released)(Press_type, uint32_t), void (*fn_initial)(), uint32_t tick_long, uint32_t tick_verylong);
+    uint8_t is_pressed(void (*fn_released)(Press_type, uint32_t) = 0, void (*fn_initial)() = 0, pins_t *led = &pins_led, uint32_t tick_long = 12288, uint32_t tick_verylong = 20480);
 
   private:
     void set_thresholds(uint16_t threshold_low, uint16_t threshold_high);

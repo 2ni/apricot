@@ -105,11 +105,15 @@ uint16_t TOUCH::get_data() {
   return result;
 }
 
-uint8_t TOUCH::is_pressed(void (*fn)(Press_type type, uint32_t ticks), uint32_t tick_long, uint32_t tick_verylong) {
-  return is_pressed(fn, &pins_led, tick_long, tick_verylong);
+uint8_t TOUCH::is_pressed(void (*fn_released)(Press_type type, uint32_t ticks), uint32_t tick_long, uint32_t tick_verylong) {
+  return is_pressed(fn_released, 0, &pins_led, tick_long, tick_verylong);
 }
 
-uint8_t TOUCH::is_pressed(void (*fn)(Press_type type, uint32_t ticks), pins_t *led, uint32_t tick_long, uint32_t tick_verylong) {
+uint8_t TOUCH::is_pressed(void (*fn_released)(Press_type type, uint32_t ticks), void (*fn_initial)(), uint32_t tick_long, uint32_t tick_verylong) {
+  return is_pressed(fn_released, fn_initial, &pins_led, tick_long, tick_verylong);
+}
+
+uint8_t TOUCH::is_pressed(void (*fn_released)(Press_type type, uint32_t ticks), void (*fn_initial)(), pins_t *led, uint32_t tick_long, uint32_t tick_verylong) {
   uint16_t v = get_data();
 
   if (v > threshold_upper && !pressed) {
@@ -118,7 +122,7 @@ uint8_t TOUCH::is_pressed(void (*fn)(Press_type type, uint32_t ticks), pins_t *l
     pressed = 0;
   }
 
-  if (!fn) return pressed;
+  if (!fn_released) return pressed;
 
   if (pressed) {
     // initial press
@@ -126,6 +130,7 @@ uint8_t TOUCH::is_pressed(void (*fn)(Press_type type, uint32_t ticks), pins_t *l
       occupied = 1;
       if (led) pins_flash(led, 1);
       start_tick = clock.current_tick;
+      if (fn_initial) (*fn_initial)();
     }
 
     uint32_t now = clock.current_tick;
@@ -150,7 +155,7 @@ uint8_t TOUCH::is_pressed(void (*fn)(Press_type type, uint32_t ticks), pins_t *l
 
     // DF("press was: %s\n", type == SHORT ? "SHORT" : (type == LONG ? "LONG" : "VERYLONG"));
     // callback
-    (*fn)(type, clock.current_tick-start_tick);
+    (*fn_released)(type, clock.current_tick-start_tick);
 
     occupied = 0;
     pressed = 0;
