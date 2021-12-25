@@ -106,14 +106,20 @@ uint16_t TOUCH::get_data() {
 }
 
 uint8_t TOUCH::is_pressed(void (*fn_released)(Press_type type, uint32_t ticks), uint32_t tick_long, uint32_t tick_verylong) {
-  return is_pressed(fn_released, 0, &pins_led, tick_long, tick_verylong);
+  return is_pressed(fn_released, 0, 0, &pins_led, tick_long, tick_verylong);
 }
 
 uint8_t TOUCH::is_pressed(void (*fn_released)(Press_type type, uint32_t ticks), void (*fn_initial)(), uint32_t tick_long, uint32_t tick_verylong) {
-  return is_pressed(fn_released, fn_initial, &pins_led, tick_long, tick_verylong);
+  return is_pressed(fn_released, fn_initial, 0, &pins_led, tick_long, tick_verylong);
 }
 
-uint8_t TOUCH::is_pressed(void (*fn_released)(Press_type type, uint32_t ticks), void (*fn_initial)(), pins_t *led, uint32_t tick_long, uint32_t tick_verylong) {
+/*
+ * set tick_verylong = 0 if not needed
+ * fn_released: called upon button is released and returns type of button and ticks passed
+ * fn_initial: called when button initially touched
+ * fn_reached: called when long_press time or very_long_press time reached, but button still pressed
+ */
+uint8_t TOUCH::is_pressed(void (*fn_released)(Press_type type, uint32_t ticks), void (*fn_initial)(), void (*fn_reached)(Press_type type), pins_t *led, uint32_t tick_long, uint32_t tick_verylong) {
   uint16_t v = get_data();
 
   if (v > threshold_upper && !pressed) {
@@ -134,7 +140,7 @@ uint8_t TOUCH::is_pressed(void (*fn_released)(Press_type type, uint32_t ticks), 
     }
 
     uint32_t now = clock.current_tick;
-    if (now-start_tick > tick_verylong) {
+    if (tick_verylong && now-start_tick > tick_verylong) {
       type = VERYLONG;
     } else if (now-start_tick > tick_long) {
       type = LONG;
@@ -144,9 +150,14 @@ uint8_t TOUCH::is_pressed(void (*fn_released)(Press_type type, uint32_t ticks), 
   }
 
   // set/unset led depending on push type
-  if (led) {
-    if (type == LONG) pins_set(led, 1);
-    else if (type == VERYLONG) pins_set(led, 0);
+  if (type != previous_type) {
+    if (type == LONG) {
+      if (led) pins_set(led, 1);
+      if (fn_reached) (*fn_reached)(type);
+    } else if (type == VERYLONG) {
+      if (led) pins_set(led, 0);
+      if (fn_reached) (*fn_reached)(type);
+    }
   }
 
   // released and processing
@@ -162,5 +173,6 @@ uint8_t TOUCH::is_pressed(void (*fn_released)(Press_type type, uint32_t ticks), 
     type = NONE;
   }
 
+  previous_type = type;
   return pressed;
 }
