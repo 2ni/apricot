@@ -73,7 +73,7 @@ void CLOCK::stop() {
 
 void CLOCK::sleep_until(uint32_t tick_until) {
   _mode = CONTINUOUS;
-  while (current_tick != tick_until) {
+  while (current_tick < tick_until) {
     // PORTA.OUTCLR = PIN7_bm;
     __asm__ __volatile__ ( "sleep" "\n\t" :: );
     // PORTA.OUTSET = PIN7_bm;
