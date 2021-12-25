@@ -44,7 +44,7 @@ int main(void) {
   uint16_t sensor_temperature;
   uint8_t counter = 0;
   uint32_t timestamp;
-  RFM69WRAPPER::WPacket packets[2];
+  RFM69WRAPPER::WPacket packets[NUM_PACKETS];
   uint8_t responses_len;
   RFM69WRAPPER::WPacket responses[10];
 

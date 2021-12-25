@@ -34,15 +34,7 @@ void RFM69WRAPPER::send(WPacket *packets, uint8_t packets_len, WPacket *response
   RFM69::Packet response;
   DF("sending %u packets | pwr: %u | ", packets_len, rfm69.get_power_level());
 
-  // copy packets to send to stream
-  for (ii=0; ii<packets_len; ii++) {
-    stream[stream_len++] = this->encode_first_byte(packets[ii].type, packets[ii].len);
-    for (uint8_t iii=0; iii<packets[ii].len; iii++) {
-      stream[stream_len++] = packets[ii].payload[iii];
-    }
-  }
-
-  // add rssi packet to stream if necessary
+  // add rssi packet to stream if necessary (as 1st packet!)
   if (this->rssi_limit_reached || this->rssi_reset || this->rssi_request) {
     DF("lim: %u res: %u requ: %u rssi: %udBm | ", this->rssi_limit_reached?1:0, this->rssi_reset?1:0, this->rssi_request?1:0, this->rssi_last);
     stream[stream_len++] = (0x03<<4) | 0x02; // type: rssi (0x03), 2bytes
@@ -55,6 +47,14 @@ void RFM69WRAPPER::send(WPacket *packets, uint8_t packets_len, WPacket *response
     this->rssi_request = 0;
   }
   uart_arr("raw send", stream, stream_len, 0);
+
+  // copy packets to send to stream
+  for (ii=0; ii<packets_len; ii++) {
+    stream[stream_len++] = this->encode_first_byte(packets[ii].type, packets[ii].len);
+    for (uint8_t iii=0; iii<packets[ii].len; iii++) {
+      stream[stream_len++] = packets[ii].payload[iii];
+    }
+  }
 
   *responses_len = 0;
   DL("");

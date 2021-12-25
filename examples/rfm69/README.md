@@ -11,15 +11,16 @@ A datapacket consist of a type/len byte followed by len  data bytes. The 1st byt
 A node can therefore send and receive 16 different types of datapackets each, which can be up to 16 bytes long. Types 0-7 are reserved for generic types, 8-15 are node dependent.
 
 ### download types (node -> gateway)
-| type | name     | length  | description                                           |
-| ---- | -----    | ------  | -----------                                           |
-| 0x00 | debug    | 1       | used to debug, eg as counter                          |
-| 0x01 | vcc      | 2       | voltage of power source, 522 = 5.22v                  |
-| 0x02 | temp     | 2       | temperature on pcb, p.475 in datasheet                |
-| 0x03 | rssi     | 1 or  2 | RSSI ctrl, [ last received RSSI as uint8_t ]          |
-| ...  |          |         |                                                       |
-| 0x08 | humidity | 1       | relative humidity in %                                |
-| 0x09 | temp     | 2       | temperature on sensor, 225 = 22.5°C                   |
+| type | name      | length  | description                                       |
+| ---- | -----     | ------  | -----------                                       |
+| 0x00 | debug     | 1       | used to debug, eg as counter                      |
+| 0x01 | vcc       | 2       | voltage of power source, 522 = 5.22v              |
+| 0x02 | temp      | 2       | temperature on pcb, p.475 in datasheet            |
+| 0x03 | rssi      | 1 or  2 | RSSI ctrl, [ last received RSSI as uint8_t ]      |
+| ...  |           |         |                                                   |
+| 0x08 | humidity  | 1       | relative humidity in %                            |
+| 0x09 | temp      | 2       | temperature on sensor, 225 = 22.5°C               |
+| 0x0a | threshold | 1       | new threshold on which humidity value means "dry" |
 
 ### upload types (gateway -> node, ie returned with ack)
 | type | name      | length | description                                          |
@@ -28,6 +29,7 @@ A node can therefore send and receive 16 different types of datapackets each, wh
 | 0x01 | timestamp | 4      | current timestamp                                    |
 | 0x02 |           |        |                                                      |
 | 0x03 | rssi      | 1 or 2 | RSSI ctrl, [ last received RSSI as uint8_t ]         |
+| 0x0a | threshold | 1      | new threshold on which humidity value means "dry"    |
 
 ### RSSI ctrl
 The RSSI ctrl byte gives information about power transmission:
