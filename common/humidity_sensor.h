@@ -29,7 +29,7 @@ class HUMIDITYSENSOR {
 
     HUMIDITYSENSOR(pins_t *pin_cmoist, pins_t *pin_cpump, pins_t *pin_temp);
     uint16_t get_humidity(uint8_t relative = 0);
-    uint16_t get_temperature(uint8_t use_float = 0, uint16_t vbat = 330);
+    int16_t get_temperature(uint8_t use_float = 0, uint16_t vbat = 330);
     uint8_t  to_relative(uint16_t value, const characteristics_struct *characteristics, uint8_t characteristics_len);
     int16_t  interpolate(uint16_t adc, const characteristics_struct *characteristics, uint8_t size);
 

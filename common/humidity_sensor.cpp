@@ -78,7 +78,7 @@ uint16_t HUMIDITYSENSOR::get_humidity(uint8_t relative) {
  * if !use_float temp based on pre-calculated table based on Vin=3.3v, Vref=1.5v, Rinseries=1M
  * see https://docs.google.com/spreadsheets/d/1KOPVIqWLB8RtdWV2ETXrc3K58mqvxZQhDzQeA-0KVI4/edit#gid=679079026 for data
  */
-uint16_t HUMIDITYSENSOR::get_temperature(uint8_t use_float, uint16_t vbat) {
+int16_t HUMIDITYSENSOR::get_temperature(uint8_t use_float, uint16_t vbat) {
   // get average adc value
   uint8_t samples = 1; // should be factor of 2, eg 2, 4, 8, 16, ...
   uint32_t adc = 0;
