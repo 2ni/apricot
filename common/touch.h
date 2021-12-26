@@ -35,7 +35,7 @@ class TOUCH {
     uint32_t now = 0;
     uint32_t start_tick = 0;
     Press_type type = NONE;
-    Press_type previous_type = SHORT;
+    Press_type previous_type = NONE;
 };
 
 #endif
