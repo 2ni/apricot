@@ -10,7 +10,7 @@
 #define GATEWAY 99
 #define NETWORK 33
 
-#define NUM_PACKETS 4 // we send 2 packets (vcc, debug count, humidity, temperature)
+#define NUM_PACKETS 5 // we send 2 packets (vcc, debug count, humidity, temperature, new threshold)
 
 #define PER 7
 #define INTERVAL_BUTTON         32768/(1000*(PER+1))*50         // 50ms
@@ -23,7 +23,7 @@
 // packet types we can get from the gateway (upload types) or send to gateway (download types)
 namespace TYPE_UPLOAD {
   typedef enum {
-    TIMESTAMP = 0x01,
+    THRESHOLD = 0x0a,   // 1byte (new humidity threshold)
   } Type_upload;
 }
 
@@ -45,12 +45,14 @@ TOUCH button(&PA7);
 SSD1306 screen;
 
 uint16_t vcc;
-uint8_t sensor_humidity;
+uint8_t sensor_humidity = 0;
+uint8_t sensor_humidity_prev = 0;
 uint8_t sensor_threshold = 50; // 50% on start
+uint8_t sensor_threshold_prev = sensor_threshold;
+uint8_t sensor_threshold_gw = sensor_threshold;
 int16_t sensor_temperature;
 uint8_t counter = 0;
 uint8_t button_is_long_press = 0;
-uint32_t timestamp;
 uint32_t check_button_at = 0;
 uint32_t update_screen_at = 0;
 uint32_t display_off_at = 0;
@@ -60,12 +62,18 @@ uint8_t responses_len;
 RFM69WRAPPER::WPacket packets[NUM_PACKETS];
 RFM69WRAPPER::WPacket responses[10];
 
+/*
+ * get data from our sensors
+ */
 void measure(uint16_t *vcc, int16_t *temperature, uint8_t *humidity) {
   *vcc = get_vin();
   *temperature = sensor.get_temperature();
   *humidity = (uint8_t)sensor.get_humidity(1);
 }
 
+/*
+ * send data to gw over 868MHz (RFM69HCW)
+ */
 void send_data() {
   measure(&vcc, &sensor_temperature, &sensor_humidity);
   DF("send data: %uv, %i°C, %u%%\n", vcc, sensor_temperature, sensor_humidity);
@@ -85,36 +93,79 @@ void send_data() {
   packets[3].payload[0] = sensor_temperature >> 8;
   packets[3].payload[1] = sensor_temperature & 0xff;
 
-  rf.send(packets, NUM_PACKETS, responses, &responses_len);
+  if (sensor_threshold != sensor_threshold_gw) {
+    packets[4].type = TYPE_DOWNLOAD::THRESHOLD;
+    packets[4].len = 1;
+    packets[4].payload[0] = sensor_threshold;
+  }
+
+  rf.send(packets, sensor_threshold != sensor_threshold_gw ? NUM_PACKETS : NUM_PACKETS - 1, responses, &responses_len);
   for (uint8_t i=0; i<responses_len; i++) {
     switch (responses[i].type) {
-      case TYPE_UPLOAD::TIMESTAMP:
-        timestamp = ((uint32_t)responses[i].payload[0] << 24)
-              | ((uint32_t)responses[i].payload[1] << 16)
-              | ((uint16_t)responses[i].payload[2] << 8)
-              | responses[i].payload[3];
-
-        DF("  " OK("timestamp: %lu") "\n", timestamp);
-      break;
-      default:
-        DF(NOK("unknown type: 0x%02x") "\n", responses[i].type);
-        uart_arr("", responses[i].payload, responses[i].len);
+      case TYPE_UPLOAD::THRESHOLD:
+        sensor_threshold = responses[i].payload[0];
+        sensor_threshold_gw = sensor_threshold;
       break;
     }
   }
   counter++;
 }
 
+/*
+ * show data on lcd screen
+ */
 void update_screen() {
   if (button_is_long_press) {
     sensor_threshold = (uint8_t)sensor.get_humidity(1);
+    screen.clear(3, 14 + sensor_threshold_prev, 1);
+    sensor_threshold_prev = sensor_threshold;
     DF("calibrated: %u%%\n", sensor_threshold);
   }
   measure(&vcc, &sensor_temperature, &sensor_humidity);
+  char buf[6] = {0};
+  uint8_t len = 0;
+  screen.clear(0, 0, 3*6*2); // clear humidity
+  screen.clear(1, 0, 3*6*2);
+  screen.clear(0, 0, 128-5*6*2); // clear temperature
+  screen.clear(1, 0, 128-5*6*2);
+  screen.clear(6, 0, 5*6*2); // clear vcc
+  screen.clear(7, 0, 5*6*2);
+  len = uart_u2c(buf, sensor_humidity, 0);
+  buf[len] = '%';
+  buf[len + 1] = '\0';
+  screen.text(buf, 0, 0, 2);
+
+  len = uart_u2c(buf, sensor_temperature, 1);
+  buf[len] = 'C';
+  buf[len + 1] = '\0';
+  screen.text(buf, 0, 127-(len + 1)*2*6, 2);
+
+  len = uart_u2c(buf, vcc, 2);
+  buf[len] = 'v';
+  buf[len+1] = '\0';
+  screen.text(buf, 6, 0, 2);
+
+  DF("%u, %u\n", sensor_humidity, sensor_humidity_prev);
+  if (sensor_humidity_prev < sensor_humidity) {
+    screen.hline(28, 14 + sensor_humidity_prev, sensor_humidity - sensor_humidity_prev, 4);
+  } else if (sensor_humidity_prev > sensor_humidity) {
+    screen.clear(3, 14 + sensor_humidity, sensor_humidity_prev - sensor_humidity);
+  }
+  sensor_humidity_prev = sensor_humidity;
+  screen.hline(24, 14 + sensor_threshold, 1, 8);
+  screen.hline(24, 114, 1, 8);
+  screen.hline(24, 14, 1, 8);
+
   screen.on();
   DF("screen update: %uv, %i°C, %u%%\n", vcc, sensor_temperature, sensor_humidity);
 }
 
+/*
+ * display status on onboard led
+ * 1 blink: ok
+ * 2 blinks: slightly too dry/humid
+ * 3 blinks: too dry/humid
+ */
 void status() {
   sensor_humidity = sensor.get_humidity(1);
   uint8_t diff = 0;
@@ -128,17 +179,27 @@ void status() {
   pins_flash(&pins_led, blinks, 200);
 }
 
+/*
+ * callback when touch button is released
+ */
 void cb_button_released(TOUCH::Press_type type, uint32_t ticks) {
   // turn display off in 10 sec starting when button released
   display_off_at = clock.current_tick + INTERVAL_DISPLAY_OFF;
   button_is_long_press = 0;
+  DL("released");
 }
 
+/*
+ * callback when touch button reaches long press (and still pressed)
+ */
 void cb_button_reached(TOUCH::Press_type type) {
-  DL("long press reached");
   button_is_long_press = 1;
+  DL("long press reached");
 }
 
+/*
+ * callback when touch button is pressed (initial press)
+ */
 void cb_button_pressed() {
   update_screen_at = clock.current_tick + INTERVAL_MEASURE_UPDATE;
   display_off_at = 0; // do not turn off screen as long as button pressed
@@ -146,13 +207,17 @@ void cb_button_pressed() {
   update_screen();
 }
 
+/*
+ * main function (state machine)
+ */
 int main(void) {
   mcu_init();
   // pins_disable_buffer();
 
   button.init();
   screen.init();
-  rf.init(GATEWAY, NETWORK);
+  // only send to  radio if there is one
+  if (!rf.init(GATEWAY, NETWORK)) send_data_at = 0;
 
   measure(&vcc, &sensor_temperature, &sensor_humidity); // initial humidity measure is always 0%
 
