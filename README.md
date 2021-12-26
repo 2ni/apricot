@@ -12,6 +12,7 @@ There are many examples in the [examples](/examples) section such as:
 - [some sensor](/examples/sensors) handling, such as ISL29035 (light), SHT20 (temperature and humidity), LPS22HBTR (pressure)
 - [touch library](/examples/touch) to work with touch buttons
 - [sleep](/examples/sleep) examples
+- complete [node](/examples/humidity-node) with humidity, temperature sensor shown on a display and sent to a RFM69 gw
 - more examples and libraries are planned (eg infrared remote control, mppt solar charger, dcc train switches, ...)
 
 
