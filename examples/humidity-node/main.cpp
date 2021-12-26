@@ -13,11 +13,11 @@
 #define NUM_PACKETS 5 // we send 2 packets (vcc, debug count, humidity, temperature, new threshold)
 
 #define PER 7
-#define INTERVAL_BUTTON         32768/(1000*(PER+1))*50         // 50ms
-#define INTERVAL_MEASURE_UPDATE 32768/(1000*(PER+1))*1000       // 1s
-#define INTERVAL_DISPLAY_OFF    32768/(1000*(PER+1))*1000*10    // 10s
-#define INTERVAL_LED_STATUS     32768/(1000*(PER+1))*1000*15    // 15s
-#define INTERVAL_SEND_DATA      32768/(1000*(PER+1))*1000*60*15 // 15min
+#define INTERVAL_BUTTON         50*32768/(1000*(PER+1))         // 50ms
+#define INTERVAL_MEASURE_UPDATE 1000*32768/(1000*(PER+1))       // 1s
+#define INTERVAL_DISPLAY_OFF    10*1000*32768/(1000*(PER+1))    // 10s
+#define INTERVAL_LED_STATUS     15*1000*32768/(1000*(PER+1))    // 15s
+#define INTERVAL_SEND_DATA      15*60*1000*32768/(1000*(PER+1)) // 15min
 //*
 
 // packet types we can get from the gateway (upload types) or send to gateway (download types)
