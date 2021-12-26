@@ -154,7 +154,7 @@ void update_screen() {
   screen.hline(24, 14, 1, 8);
 
   screen.on();
-  DF("screen update: %uv, %i°C, %u%%\n", vcc, sensor_temperature, sensor_humidity);
+  // DF("screen update: %uv, %i°C, %u%%\n", vcc, sensor_temperature, sensor_humidity);
 }
 
 /*
@@ -232,7 +232,7 @@ int main(void) {
       update_screen_at = 0;
       display_off_at = 0;
       screen.off();
-      DL("screen off");
+      // DL("screen off");
     }
 
     // led status
