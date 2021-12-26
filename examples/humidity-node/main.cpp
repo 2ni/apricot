@@ -76,8 +76,6 @@ void measure(uint16_t *vcc, int16_t *temperature, uint8_t *humidity) {
  */
 void send_data() {
   measure(&vcc, &sensor_temperature, &sensor_humidity);
-  DF("send data: %uv, %i°C, %u%%\n", vcc, sensor_temperature, sensor_humidity);
-  return;
   packets[0].type = TYPE_DOWNLOAD::VCC;
   packets[0].len = 2;
   packets[0].payload[0] = vcc >> 8;
@@ -217,7 +215,7 @@ int main(void) {
   button.init();
   screen.init();
   // only send to  radio if there is one
-  if (!rf.init(GATEWAY, NETWORK)) send_data_at = 0;
+  if (rf.init(GATEWAY, NETWORK)) send_data_at = 0;
 
   measure(&vcc, &sensor_temperature, &sensor_humidity); // initial humidity measure is always 0%
 
@@ -233,9 +231,9 @@ int main(void) {
 
     // display off
     if (display_off_at && clock.current_tick >= display_off_at) {
+      led_status_at = clock.current_tick + INTERVAL_LED_STATUS;
       update_screen_at = 0;
       display_off_at = 0;
-      led_status_at = clock.current_tick + INTERVAL_LED_STATUS;
       screen.off();
       DL("screen off");
     }
