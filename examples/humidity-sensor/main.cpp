@@ -8,9 +8,9 @@ TOUCH button(&PC3);
 
 void button_callback(TOUCH::Press_type type, uint32_t ticks) {
   // DF("press: %s for %lus\n", type == TOUCH::SHORT ? "SHORT" : "LONG", clock.ticks2ms(ticks));
-  uint16_t t = sensor.get_temperature();
+  int16_t t = sensor.get_temperature();
   uint16_t h = sensor.get_humidity();
-  DF("humidity: %u%% (%u) temp: %u vin: %u\n",
+  DF("humidity: %u%% (%u) temp: %i vin: %u\n",
     sensor.to_relative(h, sensor.characteristics_humidity, sensor.characteristics_humidity_len),
     h,
     t,
