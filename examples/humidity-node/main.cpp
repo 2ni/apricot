@@ -143,7 +143,6 @@ void update_screen() {
   buf[len+1] = '\0';
   screen.text(buf, 6, 0, 2);
 
-  DF("%u, %u\n", sensor_humidity, sensor_humidity_prev);
   if (sensor_humidity_prev < sensor_humidity) {
     screen.hline(28, 14 + sensor_humidity_prev, sensor_humidity - sensor_humidity_prev, 4);
   } else if (sensor_humidity_prev > sensor_humidity) {
@@ -184,7 +183,6 @@ void cb_button_released(TOUCH::Press_type type, uint32_t ticks) {
   // turn display off in 10 sec starting when button released
   display_off_at = clock.current_tick + INTERVAL_DISPLAY_OFF;
   button_is_long_press = 0;
-  DL("released");
 }
 
 /*
@@ -192,7 +190,6 @@ void cb_button_released(TOUCH::Press_type type, uint32_t ticks) {
  */
 void cb_button_reached(TOUCH::Press_type type) {
   button_is_long_press = 1;
-  DL("long press reached");
 }
 
 /*
