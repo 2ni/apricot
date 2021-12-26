@@ -139,8 +139,10 @@ void uart_send_digit(uint16_t value, uint8_t base) {
 /*
  * convert an uint to a char array
  * eg 345 -> "3.45"
+ *
+ * returns length of string
  */
-void uart_u2c(char *buf, uint16_t value, uint8_t precision) {
+uint8_t uart_u2c(char *buf, uint16_t value, uint8_t precision) {
   itoa(value, buf, 10);
   uint8_t len = strlen(buf);
   uint8_t wrote_dot = 0;
@@ -148,7 +150,9 @@ void uart_u2c(char *buf, uint16_t value, uint8_t precision) {
   // ensure char array is at least precision+1 length -> fill it with 0
   int8_t p_read = len - 1;
   uint8_t p_write;
-  if (precision >= len) {
+  if (precision == 0) {
+    p_write = len - 1;
+  } else if (precision >= len) {
     p_write = precision + 1;
   } else {
     p_write = len;
@@ -178,6 +182,8 @@ void uart_u2c(char *buf, uint16_t value, uint8_t precision) {
     }
   }
   buf[p_write+1] = '\0';
+
+  return p_write + 1;
 }
 
 
