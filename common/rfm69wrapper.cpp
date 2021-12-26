@@ -11,7 +11,7 @@
 RFM69WRAPPER::RFM69WRAPPER() {
 }
 
-void RFM69WRAPPER::init(uint32_t gateway_id, uint8_t network_id) {
+uint8_t RFM69WRAPPER::init(uint32_t gateway_id, uint8_t network_id) {
   this->gateway_id = gateway_id;
   this->rssi_limit_reached = 0;
   this->rssi_last = 0;
@@ -21,8 +21,10 @@ void RFM69WRAPPER::init(uint32_t gateway_id, uint8_t network_id) {
   uint8_t version = this->rfm69.init(get_deviceid(), network_id);
   if (!version) {
     DL("rfm69 init failed");
+    return 1;
   } else {
     DF("RFM69 Version: 0x%02x\n", version);
+    return 0;
   }
 }
 

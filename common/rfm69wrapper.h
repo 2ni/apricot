@@ -16,7 +16,7 @@ class RFM69WRAPPER {
     } WPacket;
 
     RFM69WRAPPER();
-    void    init(uint32_t gateway_id, uint8_t network_id);
+    uint8_t init(uint32_t gateway_id, uint8_t network_id);
     void    send(WPacket *packets, uint8_t packets_len, WPacket *responses, uint8_t *response_len, uint32_t *from = 0);
     uint8_t decode(uint8_t *i, RFM69::Packet *response, RFM69WRAPPER::WPacket *packet);
     void    decode_first_byte(uint8_t data, uint8_t *type, uint8_t *len);
