@@ -153,6 +153,8 @@ uint8_t SSD1306::pow(uint8_t value) {
 
 /*
  * scale: 1, 2, 4, 8
+ * row + scale <= 8
+ *
  */
 void SSD1306::largechar(char c, uint8_t row, uint8_t col, uint8_t scale) {
   uint8_t d_char;
@@ -188,6 +190,11 @@ void SSD1306::largechar(char c, uint8_t row, uint8_t col, uint8_t scale) {
   }
 }
 
+/*
+ * row: 0-7
+ * col: 0-127
+ * scale: 1, 2, 4, 8
+ */
 uint8_t SSD1306::text(const char *text, uint8_t row, uint8_t col, uint8_t scale) {
   SSD1306::set_pos(row, col);
   for (uint8_t i=0; i<strlen(text); i++) {
