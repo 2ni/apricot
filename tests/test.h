@@ -24,8 +24,10 @@ typedef struct {
 void printarray(uint8_t *array, uint8_t len);
 void printarray(uint32_t *array, uint8_t len);
 Test_Outcome is_same(Packet *one, Packet *two);
+Test_Outcome is_same(const char *one, char *two);
 Test_Outcome validate(const char *name, Packet *expected, Packet *got);
 Test_Outcome validate(const char *name, uint16_t expected, uint16_t got);
+Test_Outcome validate (const char *name, const char *expected, char *got);
 void print_test(const char *title, Test_Outcome result);
 Test_Result run_test(Test_Result (*function)());
 

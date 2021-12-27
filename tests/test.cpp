@@ -2,6 +2,7 @@
  * basic functions for our test suite
  */
 #include <stdio.h>
+#include <string.h>
 
 #include "test.h"
 #include "struct.h"
@@ -30,6 +31,17 @@ Test_Outcome is_same(Packet *one, Packet *two) {
   return PASS;
 }
 
+Test_Outcome is_same(const char *one, char *two) {
+  uint8_t len = strlen(one);
+  if (len != strlen(two)) return FAIL;
+
+  for (uint8_t i=0; i<len; i++) {
+    if (one[i] != two[i]) return FAIL;
+  }
+
+  return PASS;
+}
+
 Test_Outcome validate(const char *name, Packet *expected, Packet *got) {
   Test_Outcome result = is_same(expected, got);
 
@@ -52,6 +64,17 @@ Test_Outcome validate(const char *name, uint16_t expected, uint16_t got) {
   if (result == FAIL) {
     printf("   expected: %u\n", expected);
     printf("   got     : %u\n", got);
+  }
+
+  return result;
+}
+
+Test_Outcome validate (const char *name, const char *expected, char *got) {
+  Test_Outcome result = is_same(expected, got);
+  print_test(name, result);
+  if (result == FAIL) {
+    printf("   expected: %s\n", expected);
+    printf("   got     : %s\n", got);
   }
 
   return result;
@@ -90,6 +113,7 @@ uint8_t pgm_read_byte(const char *elm) {
  * override
  */
 void itoa(uint8_t value, char *str, uint8_t base) {
+  sprintf(str, "%u", value);
 }
 
 /*
