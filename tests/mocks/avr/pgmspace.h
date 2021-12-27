@@ -7,5 +7,6 @@
 #define PSTR
 
 uint8_t pgm_read_byte(const uint8_t *elm);
+uint8_t pgm_read_byte(const char *elm);
 
 #endif

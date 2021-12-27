@@ -82,6 +82,16 @@ uint8_t pgm_read_byte(const uint8_t *elm) {
   return *elm;
 }
 
+uint8_t pgm_read_byte(const char *elm) {
+  return *elm;
+}
+
+/*
+ * override
+ */
+void itoa(uint8_t value, char *str, uint8_t base) {
+}
+
 /*
  * override eeprom functions
  */

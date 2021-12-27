@@ -241,4 +241,30 @@ typedef enum VREF_ADC1REFSEL_enum
     VREF_ADC1REFSEL_1V5_gc = (0x04<<4),  /* Voltage reference at 1.5V */
 } VREF_ADC1REFSEL_t;
 
+typedef struct USART_struct
+{
+    register8_t RXDATAL;  /* Receive Data Low Byte */
+    register8_t RXDATAH;  /* Receive Data High Byte */
+    register8_t TXDATAL;  /* Transmit Data Low Byte */
+    register8_t TXDATAH;  /* Transmit Data High Byte */
+    register8_t STATUS;  /* Status */
+    register8_t CTRLA;  /* Control A */
+    register8_t CTRLB;  /* Control B */
+    register8_t CTRLC;  /* Control C */
+    _WORDREGISTER(BAUD);  /* Baud Rate */
+    register8_t reserved_1[1];
+    register8_t DBGCTRL;  /* Debug Control */
+    register8_t EVCTRL;  /* Event Control */
+    register8_t TXPLCTRL;  /* IRCOM Transmitter Pulse Length Control */
+    register8_t RXPLCTRL;  /* IRCOM Receiver Pulse Length Control */
+    register8_t reserved_2[1];
+} USART_t;
+
+#define USART0              (*(USART_t *) 0x0800)
+#define USART_TXEN_bm  0x4
+#define USART_RXEN_bm  0x80
+#define USART_RXCIE_bm  0x80
+#define USART_TXCIF_bm  0x40
+#define USART_DREIF_bm  0x20
+
 #endif

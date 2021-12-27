@@ -5,7 +5,7 @@ CLK        = 10000000
 
 SRC        = .
 COMMONDIR  = ../common
-COMMON     = pins.cpp cmac.cpp aes.cpp lorawan.cpp rfm95.cpp rfm69.cpp rfm69wrapper.cpp
+COMMON     = pins.cpp cmac.cpp aes.cpp lorawan.cpp rfm95.cpp rfm69.cpp rfm69wrapper.cpp uart.cpp
 MOCKS      = ./mocks
 
 FLAGS      = -DTEST -DDEBUG -std=c++11 -Wno-format # ignore lu warnings as different sizes
