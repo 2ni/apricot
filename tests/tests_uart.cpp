@@ -10,17 +10,33 @@ Test_Result tests_uart() {
 
   uint16_t number_of_tests = 0;
   uint16_t number_of_passed = 0;
-  char buf[5] = {0};
+  char buf[10] = {0};
+  uint8_t len = 0;
 
-  // tests
-  uart_u2c(buf, 121, 1);
-  number_of_passed += validate("uart_u2c (precision: 1)", "12.1", buf);
+  // uart_u2c
+  len = uart_u2c(buf, 121, 1);
+  number_of_passed += validate("uart_u2c (12.1)", "12.1", buf);
+  number_of_passed += validate("uart_u2c len", 4, len);
 
-  uart_u2c(buf, 123, 0);
-  number_of_passed += validate("uart_u2c (precision: 0)", "123", buf);
+  len = uart_u2c(buf, 123, 0);
+  number_of_passed += validate("uart_u2c (123)", "123", buf);
+  number_of_passed += validate("uart_u2c len", 3, len);
 
-  uart_u2c(buf, 12, 2);
-  number_of_passed += validate("uart_u2c (precision: 2)", "0.12", buf);
+  len = uart_u2c(buf, 12, 2);
+  number_of_passed += validate("uart_u2c (0.12)", "0.12", buf);
+  number_of_passed += validate("uart_u2c len", 4, len);
+  number_of_tests += 6;
+
+  // uart_sec2human
+  len = uart_sec2human(buf, 10);
+  number_of_passed += validate("sec2human (10s)", "10s", buf);
+
+  len = uart_sec2human(buf, 12253);
+  number_of_passed += validate("sec2human (03h24m13s)", "03h24m13s", buf);
+
+  len = uart_sec2human(buf, 359);
+  number_of_passed += validate("sec2human (05m59s)", "05m59s", buf);
+
   number_of_tests += 3;
 
   // final

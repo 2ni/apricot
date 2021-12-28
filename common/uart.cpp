@@ -186,6 +186,19 @@ uint8_t uart_u2c(char *buf, uint16_t value, uint8_t precision) {
   return p_write + 1;
 }
 
+/*
+ * convert seconds to human readable char array
+ * max 2^16 = 18h12m16s
+ */
+uint8_t  uart_sec2human(char *buf, uint16_t secs) {
+  uint8_t minutes = (secs / 60) % 60;
+  uint8_t hours = secs / 3600;
+  uint8_t seconds = secs % 60;
+
+  if (hours) return sprintf(buf, "%02uh%02um%02us", hours, minutes, seconds);
+  else if (minutes)  return sprintf(buf, "%02um%02us", minutes, seconds);
+  else return sprintf(buf, "%02us", seconds);
+}
 
 void uart_arr(const char *name, uint8_t *arr, uint8_t len, uint8_t newline) {
   DF("%s:", name);
