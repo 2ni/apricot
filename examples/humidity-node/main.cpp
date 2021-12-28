@@ -39,7 +39,7 @@ namespace TYPE_DOWNLOAD {
 }
 
 RFM69WRAPPER rf;
-HUMIDITYSENSOR sensor(&PA5, &PA6, &PA3);
+HUMIDITYSENSOR sensor(&PA5, &PA6, &PA3); // humidity, pump, temp
 TOUCH button(&PA7);
 SSD1306 screen;
 
@@ -65,9 +65,13 @@ RFM69WRAPPER::WPacket responses[10];
  * get data from our sensors
  */
 void measure(uint16_t *vcc, int16_t *temperature, uint8_t *humidity) {
+  pins_enable_buffer(&PA6);
+
   *vcc = get_vin();
   *temperature = sensor.get_temperature();
   *humidity = (uint8_t)sensor.get_humidity(1);
+
+  pins_disable_buffer(&PA6);
 }
 
 /*
@@ -96,7 +100,9 @@ void send_data() {
     packets[4].payload[0] = sensor_threshold;
   }
 
+  pins_enable_buffer(&pins_miso);
   rf.send(packets, sensor_threshold != sensor_threshold_gw ? NUM_PACKETS : NUM_PACKETS - 1, responses, &responses_len);
+  pins_disable_buffer(&pins_miso);
   for (uint8_t i=0; i<responses_len; i++) {
     switch (responses[i].type) {
       case TYPE_UPLOAD::THRESHOLD:
@@ -113,7 +119,9 @@ void send_data() {
  */
 void update_screen() {
   if (button_is_long_press) {
+    pins_enable_buffer(&PA6);
     sensor_threshold = (uint8_t)sensor.get_humidity(1);
+    pins_disable_buffer(&PA6);
     screen.clear(3, 14 + sensor_threshold_prev, 1);
     sensor_threshold_prev = sensor_threshold;
     DF("calibrated: %u%%\n", sensor_threshold);
@@ -175,7 +183,9 @@ void update_screen() {
  * 3 blinks: too dry/humid
  */
 void status() {
+  pins_enable_buffer(&PA6);
   sensor_humidity = sensor.get_humidity(1);
+  pins_disable_buffer(&PA6);
   uint8_t diff = 0;
   uint8_t blinks = 1;
   if (sensor_threshold > sensor_humidity) diff = sensor_threshold - sensor_humidity;
@@ -218,12 +228,14 @@ void cb_button_pressed() {
  */
 int main(void) {
   mcu_init();
-  // pins_disable_buffer();
+  pins_disable_buffer();
 
   button.init();
   screen.init();
   // only send to  radio if there is one
+  pins_enable_buffer(&pins_miso);
   if (rf.init(GATEWAY, NETWORK)) send_data_at = 0;
+  pins_disable_buffer(&pins_miso);
 
   measure(&vcc, &sensor_temperature, &sensor_humidity); // initial humidity measure is always 0%
 
