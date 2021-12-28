@@ -37,7 +37,12 @@ Test_Result tests_uart() {
   len = uart_sec2human(buf, 359);
   number_of_passed += validate("sec2human (05m59s)", "05m59s", buf);
 
-  number_of_tests += 3;
+  uint32_t send_data_at = 3691486;
+  uint32_t now = 17774;
+  len = uart_sec2human(buf, (((send_data_at - now)) * (7 + 1)) / 32768);
+  number_of_passed += validate("sec2human (14m59s)", "14m56s", buf);
+
+  number_of_tests += 4;
 
   // final
   Test_Result result = { .total=number_of_tests, .passed=number_of_passed };

@@ -13,12 +13,11 @@
 #define NUM_PACKETS 5 // we send 2 packets (vcc, debug count, humidity, temperature, new threshold)
 
 #define PER 7
-#define INTERVAL_BUTTON         50*32768/(1000*(PER+1))         // 50ms
-#define INTERVAL_MEASURE_UPDATE 1000*32768/(1000*(PER+1))       // 1s
-#define INTERVAL_DISPLAY_OFF    10*1000*32768/(1000*(PER+1))    // 10s
-#define INTERVAL_LED_STATUS     15*1000*32768/(1000*(PER+1))    // 15s
-#define INTERVAL_SEND_DATA      15*60*1000*32768/(1000*(PER+1)) // 15min
-//*
+#define INTERVAL_BUTTON         205     // 50ms = 50*32768/(1000*(PER+1))
+#define INTERVAL_MEASURE_UPDATE 4096    //  1s  = 1000*32768/(1000*(PER+1))
+#define INTERVAL_DISPLAY_OFF    40960   // 10s  = 10*1000*32768/(1000*(PER+1))
+#define INTERVAL_LED_STATUS     61440   // 15s  = 15*1000*32768/(1000*(PER+1))
+#define INTERVAL_SEND_DATA      3686400 // 15m  = 15*60*1000*32768/(1000*(PER+1))
 
 // packet types we can get from the gateway (upload types) or send to gateway (download types)
 namespace TYPE_UPLOAD {
@@ -120,29 +119,44 @@ void update_screen() {
     DF("calibrated: %u%%\n", sensor_threshold);
   }
   measure(&vcc, &sensor_temperature, &sensor_humidity);
-  char buf[6] = {0};
+  char buf[10] = {0};
   uint8_t len = 0;
-  screen.clear(0, 0, 3*6*2); // clear humidity
+  // clear old data on screen
+  screen.clear(0, 0, 3*6*2);         // clear humidity
   screen.clear(1, 0, 3*6*2);
-  screen.clear(0, 0, 128-5*6*2); // clear temperature
-  screen.clear(1, 0, 128-5*6*2);
-  screen.clear(6, 0, 5*6*2); // clear vcc
+  screen.clear(0, 128-5*6*2, 5*6*2); // clear temperature
+  screen.clear(1, 128-5*6*2, 5*6*2);
+  screen.clear(6, 0, 5*6*2);         // clear vcc
   screen.clear(7, 0, 5*6*2);
+  if (send_data_at) {                // clear next update
+    screen.clear(7, 128-9*6*1, 9*6*1);
+  }
+
+  // show humidity
   len = uart_u2c(buf, sensor_humidity, 0);
   buf[len] = '%';
   buf[len + 1] = '\0';
   screen.text(buf, 0, 0, 2);
 
+  // show temperature
   len = uart_u2c(buf, sensor_temperature, 1);
   buf[len] = 'C';
   buf[len + 1] = '\0';
   screen.text(buf, 0, 127-(len + 1)*2*6, 2);
 
+  // show vcc
   len = uart_u2c(buf, vcc, 2);
   buf[len] = 'v';
   buf[len+1] = '\0';
   screen.text(buf, 6, 0, 2);
 
+  // show next update
+  if (send_data_at) {
+    len = uart_sec2human(buf, (send_data_at - clock.current_tick) * (PER + 1) / 32768);
+    screen.text(buf, 7, 127 - len*6, 1); // width per char: 6, scale: 1
+  }
+
+  // show threshold and humidity bar
   if (sensor_humidity_prev < sensor_humidity) {
     screen.hline(28, 14 + sensor_humidity_prev, sensor_humidity - sensor_humidity_prev, 4);
   } else if (sensor_humidity_prev > sensor_humidity) {
