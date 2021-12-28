@@ -121,30 +121,26 @@ void update_screen() {
   measure(&vcc, &sensor_temperature, &sensor_humidity);
   char buf[10] = {0};
   uint8_t len = 0;
-  // clear old data on screen
-  screen.clear(0, 0, 3*6*2);         // clear humidity
-  screen.clear(1, 0, 3*6*2);
-  screen.clear(0, 128-5*6*2, 5*6*2); // clear temperature
-  screen.clear(1, 128-5*6*2, 5*6*2);
-  screen.clear(6, 0, 5*6*2);         // clear vcc
-  screen.clear(7, 0, 5*6*2);
-  if (send_data_at) {                // clear next update
-    screen.clear(7, 128-9*6*1, 9*6*1);
-  }
 
   // show humidity
+  screen.clear(0, 0, 3*6*2);
+  screen.clear(1, 0, 3*6*2);
   len = uart_u2c(buf, sensor_humidity, 0);
   buf[len] = '%';
   buf[len + 1] = '\0';
   screen.text(buf, 0, 0, 2);
 
   // show temperature
+  screen.clear(0, 128-5*6*2, 5*6*2);
+  screen.clear(1, 128-5*6*2, 5*6*2);
   len = uart_u2c(buf, sensor_temperature, 1);
   buf[len] = 'C';
   buf[len + 1] = '\0';
   screen.text(buf, 0, 127-(len + 1)*2*6, 2);
 
   // show vcc
+  screen.clear(6, 0, 5*6*2);
+  screen.clear(7, 0, 5*6*2);
   len = uart_u2c(buf, vcc, 2);
   buf[len] = 'v';
   buf[len+1] = '\0';
@@ -152,6 +148,7 @@ void update_screen() {
 
   // show next update
   if (send_data_at) {
+    screen.clear(7, 128-9*6*1, 9*6*1);
     len = uart_sec2human(buf, (send_data_at - clock.current_tick) * (PER + 1) / 32768);
     screen.text(buf, 7, 127 - len*6, 1); // width per char: 6, scale: 1
   }
