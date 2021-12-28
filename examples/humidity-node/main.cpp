@@ -13,11 +13,11 @@
 #define NUM_PACKETS 5 // we send 2 packets (vcc, debug count, humidity, temperature, new threshold)
 
 #define PER 7
-#define INTERVAL_BUTTON         205     // 50ms = 50*32768/(1000*(PER+1))
-#define INTERVAL_MEASURE_UPDATE 4096    //  1s  = 1000*32768/(1000*(PER+1))
-#define INTERVAL_DISPLAY_OFF    40960   // 10s  = 10*1000*32768/(1000*(PER+1))
-#define INTERVAL_LED_STATUS     61440   // 15s  = 15*1000*32768/(1000*(PER+1))
-#define INTERVAL_SEND_DATA      3686400 // 15m  = 15*60*1000*32768/(1000*(PER+1))
+#define INTERVAL_BUTTON         ((uint32_t)((uint64_t)(1)*50*32768/(PER+1)/1000)) // 50ms
+#define INTERVAL_MEASURE_UPDATE ((uint32_t)((uint64_t)(1)*1*1000*32768/(PER+1)/1000)) // 1s
+#define INTERVAL_DISPLAY_OFF    ((uint32_t)((uint64_t)(1)*10*1000*32768/(PER+1)/1000)) // 10s
+#define INTERVAL_LED_STATUS     ((uint32_t)((uint64_t)(1)*15*1000*32768/(PER+1)/1000)) // 15s
+#define INTERVAL_SEND_DATA      ((uint32_t)((uint64_t)(1)*15*60*1000*32768/(PER+1)/1000)) // 15m
 
 // packet types we can get from the gateway (upload types) or send to gateway (download types)
 namespace TYPE_UPLOAD {
