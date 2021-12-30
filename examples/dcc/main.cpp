@@ -131,7 +131,7 @@ void track_switch(uint16_t addr, uint8_t local_addr, uint8_t output, pins_t *pin
  *
  * only supports one instruction byte (extended address mode 14bit address)
  * 0x0000 - 0x3fff (0xc00 - 0xfff)
- * {preamble} 0 11AAAAAA 0 AAAAAAAA CCCDDDDD 0 EEEEEEEE 1
+ * {preamble} 0 11AAAAAA 0 AAAAAAAA 0 CCCDDDDD 0 EEEEEEEE 1
  * A: address bit
  * C: type bit
  * D: data bit

@@ -1,4 +1,14 @@
-Create a simple poc for DCC train commands using a motor driver.
+A simple simulator for dcc signals.
+
+### Example of a 14bit multifunction decoder (extended address mode)
+{preamble} 0 11AAAAAA AAAAAAAA 0 CCCDDDDD 0 EEEEEEEE 1
+A: address bit
+C: type bit (see [doc](https://dccwiki.com/Digital_Packet))
+D: data bit
+E: control bit (xor)
+
+<img src="example-multifunction-decoder-signal.png" width="500px" />
+
 
 h4. Links
 - https://www.opendcc.de/elektronik/opendcc/opendcc_sw_lenz.html
