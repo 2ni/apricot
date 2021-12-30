@@ -7,6 +7,7 @@ h4. Links
 - http://normen.railcommunity.de/RCN-211.pdf
 - https://github.com/mrrwa/NmraDcc/blob/master/NmraDcc.cpp
 - https://www.opendcc.de/elektronik/opendecoder/OpenDecoder_V04.zip
+- http://www.opendcc.net/elektronik/opendecoder/opendecoder_sw_rm_e.html
 
 
 h4. Knowledge
