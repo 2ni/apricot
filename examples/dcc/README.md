@@ -1,4 +1,4 @@
-A simple simulator for dcc signals.
+# A simple simulator for dcc signals.
 
 ### Example of a 14bit multifunction decoder (extended address mode)
 ```
