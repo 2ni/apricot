@@ -190,13 +190,13 @@ int main(void) {
   while  (1) {
     switch (port) {
       case 1:
-        track_switch(0x03, 1, 0, &SIGNAL);
+        track_switch(0x10b, 1, 0, &SIGNAL); // address 267
         port_outputs &= !(1 << 7); // clear bit 7
         print_port(port_outputs);
         port = 0;
         break;
       case 2:
-        track_switch(0x03, 1, 1, &SIGNAL);
+        track_switch(0x10b, 1, 1, &SIGNAL);
         port_outputs |= (1 << 7); // set bit 7
         print_port(port_outputs);
         port = 0;

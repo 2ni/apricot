@@ -21,6 +21,7 @@ E: control bit (xor)
 - https://github.com/mrrwa/NmraDcc/blob/master/NmraDcc.cpp
 - https://www.opendcc.de/elektronik/opendecoder/OpenDecoder_V04.zip
 - http://www.opendcc.net/elektronik/opendecoder/opendecoder_sw_rm_e.html
+- https://www.lucadentella.it/en/2017/11/25/dcc-decoder-accessori-per-led/
 
 
 ### Knowledge

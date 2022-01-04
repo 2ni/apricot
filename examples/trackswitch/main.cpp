@@ -24,6 +24,14 @@ namespace DCCPACKET {
   } Type_State;
 }
 
+pins_t INA1 = PA7;
+pins_t INA2 = PA6;
+pins_t INB1 = PB2;
+pins_t INB2 = PB3;
+pins_t LIMIT1 = PB1;
+pins_t LIMIT2 = PB0;
+pins_t DCC = PA5;
+
 volatile int16_t direction = 0;
 volatile uint8_t limit_reached = 0;
 uint8_t speed = 5;
@@ -80,8 +88,17 @@ void init_timer() {
   TCA0.SINGLE.CTRLA = TCA_SINGLE_CLKSEL_DIV1_gc;
 }
 
-void stopped() {
-  pins_set(&pins_led, 0);
+
+void move_turnout(uint8_t position) {
+  if (position == 0x01 && pins_get(&LIMIT2) != 0) {
+    pins_set(&pins_led, 1);
+    stepper.move(1000, speed);
+  }
+
+  if (position == 0x00 && pins_get(&LIMIT1) != 0) {
+    pins_set(&pins_led, 1);
+    stepper.move(-1000, speed);
+  }
 }
 
 /*
@@ -90,14 +107,6 @@ void stopped() {
  */
 int main(void) {
   mcu_init();
-
-  pins_t INA1 = PA7;
-  pins_t INA2 = PA6;
-  pins_t INB1 = PB2;
-  pins_t INB2 = PB3;
-  pins_t LIMIT1 = PB1;
-  pins_t LIMIT2 = PB0;
-  pins_t DCC = PA5;
 
   pins_output(&DCC, 0); // set as input
   PORTA.PIN5CTRL |= PORT_ISC_BOTHEDGES_gc; // DCC
@@ -185,23 +194,32 @@ int main(void) {
               }
               if (!error) {
                 // uart_arr("packets", dcc_packets, dcc_packets_count);
+                // idle packet
+                if (dcc_packets[0] == 0xff) {
+                }
                 // multifunction decoder
-                if (dcc_packets[0] & 0x0c) {
+                else if (dcc_packets[0] >= 192 && dcc_packets[0] <= 231) {
                   uint16_t addr = ((dcc_packets[0] & 0x3f) << 8) | dcc_packets[1];
                   uint8_t data_type = dcc_packets[2] & 0xe0;
                   uint8_t data = dcc_packets[2] & 0x1f;
-                  DF("addr: %u (0x%04x) type: 0x%02x, data: 0x%02x\n", addr, addr, data_type, data);
+                  DF("addr (14bit): %u (0x%04x) type: 0x%02x, data: 0x%02x\n", addr, addr, data_type, data);
                   if (addr == 2000) {
-                    if (data == 0x01 && pins_get(&LIMIT2) != 0) {
-                      pins_set(&pins_led, 1);
-                      stepper.move(1000, speed); // 30 ticks = 1ms
-                    }
-
-                    if (data == 0x00 && pins_get(&LIMIT1) != 0) {
-                      pins_set(&pins_led, 1);
-                      stepper.move(-1000, speed); // 30 ticks = 1ms
-                    }
+                    move_turnout(data & 0x01);
                   }
+                // basic accessory decoder 9bit:  {preamble} 0 10AAAAAA 0 1AAACDDD 0 EEEEEEEE 1
+                } else if (dcc_packets[0] >= 128 && dcc_packets[0] <= 191 && (dcc_packets[1] & 0x80)) {
+                  uint16_t addr = (dcc_packets[0] & 0x3f) | ((~dcc_packets[1] & 0x70)<<2);
+                  uint8_t action = (dcc_packets[1] & 0x08)>>3;
+                  uint8_t local_addr = (dcc_packets[1] & 0x06)>>1;
+                  uint8_t output = dcc_packets[1] & 0x01;
+                  DF("addr (9bit): %u (0x%04x), local: 0x%02x, output: %u, action: %u\n", addr, addr, local_addr, output, action);
+                  if (addr == 267) {
+                    move_turnout(output & 0x01);
+                  }
+                // extended accessory decoder 11bit: {preamble} 0 10AAAAAA 0 0AAA0AA1 0 000XXXXX 0 EEEEEEEE 1
+                // of help: https://www.iascaled.com/blog/high-current-dcc-accessory-decoder/
+                } else if (dcc_packets[0] >= 128 && dcc_packets[0] <= 191 && (dcc_packets[1] & 0x80) == 0x00) {
+                  DL("addr (11bit): not implemented");
                 }
               }
               state_packet = DCCPACKET::WAITPREAMBLE;
