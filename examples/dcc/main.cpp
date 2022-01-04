@@ -143,7 +143,7 @@ void multifunction_decoder(uint16_t addr, uint16_t type, uint8_t data, pins_t *p
   packets[1] = addr & 0xff;
   packets[2] = ((type & 0x07)<<5) | (data & 0x1f);
   send_packet(packets, 3, pin);
-  uart_arr("multi", packets, 3);
+  // uart_arr("multi", packets, 3);
 }
 
 void bitwise(char *buf, uint8_t value) {
@@ -151,6 +151,21 @@ void bitwise(char *buf, uint8_t value) {
     buf[i] = value & 0x80 ? '1' : '0';
     value <<= 1;
   }
+}
+
+
+void idle_packet(pins_t *pin) {
+  uint8_t packets[2];
+  packets[0] = 0xff;
+  packets[1] = 0x00;
+  send_packet(packets, 2, pin); // idle packet
+}
+
+void print_port(uint8_t port_outputs) {
+  char buf[9];
+  bitwise(buf, port_outputs);
+  buf[8] = '\0';
+  DF("ports (%u): %s\n", port, buf);
 }
 
 int main(void) {
@@ -166,27 +181,36 @@ int main(void) {
   pins_set(&SIGNAL, 1);
 
   uint8_t port_outputs = 0;
-  char buf[9];
+  uint8_t fill_with_idle = 0;
 
   timer_init();
 
-  DL("usage:\n 1-4: basic accessory 9bit\n 5: multifunction decoder (extended address mode 14bit)\n 6: idle packet");
+  DL("usage:\n 1/2: basic accessory 9bit\n 3/4: multifunction decoder (extended address mode 14bit)\n 5: one idle packet\n 6: idle packets in between");
 
   while  (1) {
     switch (port) {
       case 1:
-      case 2:
-      case 3:
-      case 4:
-        track_switch(0x03, port-1, (port_outputs >> (port-1)) ? 0 : 1, &SIGNAL);
-        port_outputs ^= 1 << (port-1); // toggle bit port-1
-        bitwise(buf, port_outputs);
-        buf[8] = '\0';
-        DF("port %u: %s\n", port, buf);
+        track_switch(0x03, 1, 0, &SIGNAL);
+        port_outputs &= !(1 << 7); // clear bit 7
+        print_port(port_outputs);
         port = 0;
         break;
-      case 5:
-        multifunction_decoder(0x7d0, 0x1, (port_outputs >> (port-1)) ? 0 : 1, &SIGNAL);
+      case 2:
+        track_switch(0x03, 1, 1, &SIGNAL);
+        port_outputs |= (1 << 7); // set bit 7
+        print_port(port_outputs);
+        port = 0;
+        break;
+      case 3:
+        multifunction_decoder(0x7d0, 0x1, 0, &SIGNAL);
+        port_outputs &= ~(1<<3); // set bit 3
+        print_port(port_outputs);
+        port = 0;
+      case 4:
+        multifunction_decoder(0x7d0, 0x1, 1, &SIGNAL); // address 2000
+        port_outputs |= (1<<3); // set bit 3
+        print_port(port_outputs);
+        port = 0;
         /*
         uint8_t packets[2];
         packets[0] = 0x05;
@@ -212,20 +236,19 @@ int main(void) {
         packets[1] = 0x00;
         send_packet(packets, 2, &SIGNAL);
         */
-
-        port_outputs ^= 1 << (port-1); // toggle bit port-1
-        bitwise(buf, port_outputs);
-        buf[8] = '\0';
-        DF("port %u: %s\n", port, buf);
+        break;
+      case 5:
+        idle_packet(&SIGNAL);
         port = 0;
         break;
       case 6:
-        uint8_t packets[2];
-        packets[0] = 0xff;
-        packets[1] = 0x00;
-        send_packet(packets, 2, &SIGNAL); // idle packet
+        fill_with_idle = !fill_with_idle;
+        DF("fill with idle: %s\n", fill_with_idle ? "yes" : "no");
         port = 0;
-        break;
+    }
+
+    if (fill_with_idle) {
+      idle_packet(&SIGNAL);
     }
   }
 }

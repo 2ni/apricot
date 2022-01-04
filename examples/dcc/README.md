@@ -13,6 +13,7 @@ E: control bit (xor)
 
 
 ### Links
+- https://www.nmra.org/index-nmra-standards-and-recommended-practices
 - https://www.opendcc.de/elektronik/opendcc/opendcc_sw_lenz.html
 - https://dccwiki.com/Digital_packet
 - https://dccwiki.com/DCC_Tutorial_(Power)
