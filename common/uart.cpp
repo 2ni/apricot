@@ -17,6 +17,28 @@
 
 #include "pins.h"
 
+#define TX_BUFF_SIZE 64
+static uint8_t tx_buff[TX_BUFF_SIZE];
+static uint8_t tx_in;
+volatile uint8_t tx_out;
+
+// count up and wrap around
+#define ROLLOVER( x, max )  x = ++x >= max ? 0 : x
+
+// TEST defined in Makefile of tests/
+#ifndef TEST
+ISR(USART0_DRE_vect) {
+  // nothing to send
+  if (tx_in == tx_out) {
+    USART0.CTRLA &= ~USART_DREIE_bm;
+    return;
+  }
+
+  USART0.TXDATAL = tx_buff[tx_out];
+  ROLLOVER (tx_out, TX_BUFF_SIZE);
+}
+#endif
+
 /*
  * the ISR needs to be setup in the main code for now
  *
@@ -40,6 +62,8 @@ void uart_init(uint8_t enable_rx) {
   USART0.CTRLB = USART_TXEN_bm;  // enable TX
   USART_PORT.DIRSET = USART_TX;
   USART_PORT.DIRCLR = USART_RX;
+  tx_in = 0;
+  tx_out = 0;
 
   _delay_ms(600); // the key listener needs some time to start
 
@@ -47,12 +71,11 @@ void uart_init(uint8_t enable_rx) {
   DF("\033[1;38;5;18;48;5;226m Hello from 0x%06lX \033[0m\n", get_deviceid());
 
   if (enable_rx) {
-    USART0.CTRLB |= USART_RXEN_bm;  // enable TX and RX
-    USART0.CTRLA = USART_RXCIE_bm; // enable RX interrupt
+    USART0.CTRLB |= USART_RXEN_bm;  // enable RX
+    USART0.CTRLA |= USART_RXCIE_bm; // enable RX interrupt
     USART_PORT.DIRCLR = USART_RX;
     DL("rx enabled");
   }
-
 }
 
 /*
@@ -106,10 +129,20 @@ void uart_tuple(const char* key, char* value) {
  * sends a single char to the uart
  */
 void uart_send_char(unsigned char c) {
+  uint8_t next = tx_in;
+  ROLLOVER (next, TX_BUFF_SIZE);
+  tx_buff[tx_in] = c;
+  // wait until at least one byte free
+  while (next == tx_out);
+  tx_in = next;
+  USART0.CTRLA |= USART_DREIE_bm;
+
+  /*
   USART0.STATUS = USART_TXCIF_bm; // clear flag
   while (!(USART0.STATUS & USART_DREIF_bm));
   USART0.TXDATAL = c;
   while (!(USART0.STATUS & USART_TXCIF_bm)); // wait until data has been sent to avoid issues with eg sleep
+  */
 }
 
 /*
