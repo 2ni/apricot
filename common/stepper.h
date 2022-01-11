@@ -16,6 +16,7 @@ class STEPPER {
     void init(pins_t *INA1, pins_t *INA2, pins_t *INB1, pins_t *INB2);
     void set_step(uint8_t step);
     void stop();
+    void keep();
     void move_blocking(int16_t steps, uint8_t speed);
     void move(int16_t steps, uint8_t ticks);
     void loop(void (*fn)() = 0);

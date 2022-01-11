@@ -58,6 +58,15 @@ void STEPPER::stop() {
   steps_left = 0;
 }
 
+/*
+ * activates motor coil without moving
+ * used eg to keep position with power or
+ * eg just to consume some power for ack on DCC signals
+ */
+void STEPPER::keep() {
+  set_step(current_step);
+}
+
 void STEPPER::move_one_step(int8_t direction) {
   current_step += direction;
   if (direction == 1 && current_step == 4) current_step = 0;
