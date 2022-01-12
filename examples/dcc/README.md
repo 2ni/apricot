@@ -13,8 +13,16 @@ E: control bit (xor)
 
 
 ### Links
+- best doc: http://vhdm.de/index.php?option=com_content&view=article&id=49&Itemid=61&eprivacy=1
+- cv: https://dccwiki.com/Configuration_Variable
+- decoder programming: https://dccwiki.com/Decoder_Programming
+- address range: https://dccwiki.com/Address_Range
+- examples: https://www.opendcc.de/elektronik/opendcc/opendcc_sw_lenz.html
+- nmra extended packet formats: https://www.nmra.org/sites/default/files/s-9.2.1_2012_07.pdf
+- extended accessory decoder 11bit: https://www.iascaled.com/blog/high-current-dcc-accessory-decoder/
+
+
 - https://www.nmra.org/index-nmra-standards-and-recommended-practices
-- https://www.opendcc.de/elektronik/opendcc/opendcc_sw_lenz.html
 - https://dccwiki.com/Digital_packet
 - https://dccwiki.com/DCC_Tutorial_(Power)
 - http://normen.railcommunity.de/RCN-211.pdf

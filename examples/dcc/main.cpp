@@ -4,26 +4,97 @@
 
 #include <avr/interrupt.h>
 #include <avr/io.h>
+#include <avr/eeprom.h>
 #include <util/delay.h>
 #include "uart.h"
 #include "mcu.h"
 #include "pins.h"
 
+#include "string.h"
+
 volatile uint8_t done = 0;
 volatile uint8_t port = 0;
+char buff[8];
+volatile uint8_t buff_p = 0;
+namespace CMD_STATE {
+  typedef enum {
+    NONE = 0,
+    ADDR = 1,
+  } Type_Cmd_State;
+}
+CMD_STATE::Type_Cmd_State cmd_state = CMD_STATE::NONE;
+
+pins_t R = PB6; // also control output
+pins_t L = PB7;
+uint16_t EEMEM ee_decoder_addr;
+uint16_t decoder_addr;
+
+/*
+ * get <num_of_chars> chars before current pointer of ring buffer
+ */
+uint8_t get_prev_chars(char *buff, char *data, uint8_t num_of_chars) {
+  uint8_t len_buff = strlen(buff);
+  num_of_chars = num_of_chars > len_buff ? len_buff : num_of_chars;
+  uint8_t pos = buff_p;
+  for (uint8_t i=0; i<num_of_chars; i++) {
+    uart_rollbefore(&pos, 8);
+    data[num_of_chars-1-i] = buff[pos];
+  }
+  data[num_of_chars] = '\0';
+
+  return num_of_chars;
+}
 
 /*
  * isr for uart read
  */
 ISR(USART0_RXC_vect) {
   uint8_t in = USART0.RXDATAL;
-  switch (in) {
-    case '1': port = 1; break;
-    case '2': port = 2; break;
-    case '3': port = 3; break;
-    case '4': port = 4; break;
-    case '5': port = 5; break;
-    case '6': port = 6; break;
+  if (in != '\n') {
+    buff[buff_p] = in;
+    uart_rollover(&buff_p, 8);
+  }
+
+  if (cmd_state == CMD_STATE::NONE) {
+    switch (in) {
+      case '1': port = 1; break;
+      case '2': port = 2; break;
+      case '3': port = 3; break;
+      case '4': port = 4; break;
+      case '5': port = 5; break;
+      case '6': port = 6; break;
+      case '7': port = 7; break;
+      case '8': port = 8; break;
+      case '9': port = 9; break;
+    }
+  }
+
+  if (in == '\n') {
+    switch (cmd_state) {
+      case CMD_STATE::NONE:
+        char cmd[5];
+        get_prev_chars(buff, cmd, 4);
+        if (!strcmp(cmd, "addr")) {
+          cmd_state = CMD_STATE::ADDR;
+          D("enter new address...");
+        }
+        break;
+      case CMD_STATE::ADDR:
+        char addr_in[8];
+        uint8_t l = get_prev_chars(buff, addr_in, 7);
+        uint16_t addr = 0;
+        for (uint8_t i=0; i<l; i++) {
+          addr = addr*10 + addr_in[i] - '0';
+        }
+        DF("address in use: %u\n", addr);
+        eeprom_update_word(&ee_decoder_addr, addr);
+        cmd_state = CMD_STATE::NONE;
+        break;
+    }
+
+    // clear ring buffer
+    buff_p = 0;
+    for (uint8_t ii=0; ii<8; ii++) buff[ii] = 0;
   }
 }
 
@@ -38,23 +109,30 @@ ISR(TCA0_OVF_vect) {
 
 void timer_init() {
   TCA0.SINGLE.INTCTRL = TCA_SINGLE_OVF_bm;
-  TCA0.SINGLE.CTRLA = TCA_SINGLE_ENABLE_bm;
 }
 
-void send_bit(uint8_t length, pins_t *pin) {
-  pins_set(pin, 1);
+void send_bit(uint8_t length) {
+  TCA0.SINGLE.CTRLA = TCA_SINGLE_ENABLE_bm | TCA_SINGLE_CLKSEL_DIV1_gc;
+  pins_set(&R, 1);
+  pins_set(&L, 0);
   done = 0;
-  TCA0.SINGLE.PER = length ? 580 : 1160; // 10MHz*58us = 580
+  TCA0.SINGLE.PER = length ? 285 : 850; // 10MHz*58us = 580
   TCA0.SINGLE.CNT = 0;
   while (!done); // wait for interrupt
-  pins_set(pin, 0);
+  pins_set(&R, 0);
+  pins_set(&L, 1);
   done = 0;
+  TCA0.SINGLE.PER = length ? 395 : 980;
+  TCA0.SINGLE.CNT = 0;
   while (!done); // wait for interrupt
+  pins_set(&R, 1);
+  pins_set(&L, 1);
+  TCA0.SINGLE.CTRLA = 0;
 }
 
-void send_byte(uint8_t data, pins_t *pin) {
+void send_byte(uint8_t data) {
   for (uint8_t c=0; c<8; c++) {
-    send_bit(data & (1<<(7-c)), pin);
+    send_bit(data & (1<<(7-c)));
   }
 }
 
@@ -87,42 +165,72 @@ void send_byte(uint8_t data, pins_t *pin) {
  *
  * we only support 3bytes (addr, data, xor)
  */
-void send_packet(uint8_t *packets, uint8_t len, pins_t *pin) {
+void send_packet(uint8_t *packets, uint8_t len) {
   // preamble
-  for (uint8_t c=0; c<12; c++) send_bit(1, pin);
+  for (uint8_t c=0; c<12; c++) send_bit(1);
 
   // data
   uint8_t x = 0;
   for (uint8_t c=0; c<len; c++) {
-    send_bit(0, pin);
-    send_byte(packets[c], pin);
+    send_bit(0);
+    send_byte(packets[c]);
     x ^= packets[c];
   }
-  send_bit(0, pin);
-  send_byte(x, pin);
-  send_bit(1, pin);
-  pins_set(pin, 1);
+  send_bit(0);
+  send_byte(x);
+  send_bit(1);
+  pins_set(&R, 1);
+  pins_set(&L, 1);
   // uart_arr("packets", packets, len);
   // DF("xor: 0x%02x\n", x);
   // DF("a: 0x%02x, d: 0x%02x, c: 0x%02x\n", addr, data, addr^data);
 }
 
 /*
- * Basic accessory devoder 9bit address
+ * Basic accessory decoder 9bit address
+ * {preamble} 0 10AAAAAA 0 1AAACDDD 0 EEEEEEEE 1
  * example  weiche / turnout / track switch
  *
  */
-void track_switch(uint16_t addr, uint8_t local_addr, uint8_t output, pins_t *pin) {
+void basic_accessory(uint16_t addr, uint8_t local_addr, uint8_t output) {
   uint8_t packets[2];
-  packets[0] = 0x80 + (addr & 0x3f); // a 128-191: 10AAAAAA, 1AAA1BBR (sometimes: 11AAAAAA, 1AAACDDD)
+  packets[0] = 0x80 | (addr & 0x3f); // a 128-191: 10AAAAAA, 1AAA1BBR (sometimes: 11AAAAAA, 1AAACDDD)
   //                  ----------- AAA -----------   - C -    ---------- BB ----------   ------ R ------
-  packets[1] = 0x80 + ((~addr & 0x1c0)>>2) + (1<<3) + ((local_addr & 0x03)<<1) + (output & 0x01);
+  packets[1] = 0x88 | ((~addr & 0x1c0)>>2) | ((local_addr & 0x03)<<1) | (output & 0x01);
   // DF("addr: 0x%03x, local: 0x%02x, a: 0x%02x, d: 0x%02x\n", addr, local_addr, a, d);
-  send_packet(packets, 2, pin);
+  pins_set(&PA7, 0);
+  send_packet(packets, 2);
+  pins_set(&PA7, 1);
 }
 
 /*
- * Extended address mode multifunction devoder
+ * basic accessory decoder 9bit address configuration variable access
+ * {preamble}   10AAAAAA 0 1AAACDDD 0 1110CCVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
+ * example #P 0 10001011 0 10111000 0 11101100 0 00000000 0 00011000 0 11000111 1
+ *
+ * CC: 00=reserved, 01=verify byte, 11=writy byte, 10=bit manipulation
+ * VVVVVVVVVV: 10bit address for CV1-1024
+ * DDDDDDDD: data of CV
+ * CDDD=0000 then the CVs refer to the entire decoder
+ *
+ * only write for now
+ * cv_addr: 1-1024
+ */
+void basic_accessory_programming(uint16_t addr, uint16_t cv_addr, uint8_t cv_data) {
+  uint8_t packets[5] = {0};
+  cv_addr -= 1;
+  packets[0] = 0x80 | (addr & 0x3f);
+  packets[1] = 0x88 | ((~addr & 0x1c0)>>2);
+  packets[2] = 0xe0 | (3<<2) | ((cv_addr & 0x300)>>8); // CC=11 (write byte)
+  packets[3] = 0xff & cv_addr;
+  packets[4] = cv_data;
+  pins_set(&PA7, 0);
+  send_packet(packets, 5);
+  pins_set(&PA7, 1);
+}
+
+/*
+ * Extended address mode multifunction decoder
  *
  * type see https://dccwiki.com/Digital_Packet
  * b000 decoder and consist control instructions
@@ -137,12 +245,14 @@ void track_switch(uint16_t addr, uint8_t local_addr, uint8_t output, pins_t *pin
  * D: data bit
  * E: control bit (xor)
  */
-void multifunction_decoder(uint16_t addr, uint16_t type, uint8_t data, pins_t *pin) {
+void multifunction(uint16_t addr, uint16_t type, uint8_t data) {
   uint8_t packets[3];
   packets[0] = (0xc0 | (addr >> 8)); // packet must be 0b11xxxxxx
   packets[1] = addr & 0xff;
   packets[2] = ((type & 0x07)<<5) | (data & 0x1f);
-  send_packet(packets, 3, pin);
+  pins_set(&PA7, 0);
+  send_packet(packets, 3);
+  pins_set(&PA7, 1);
   // uart_arr("multi", packets, 3);
 }
 
@@ -153,12 +263,11 @@ void bitwise(char *buf, uint8_t value) {
   }
 }
 
-
-void idle_packet(pins_t *pin) {
+void idle_packet() {
   uint8_t packets[2];
   packets[0] = 0xff;
   packets[1] = 0x00;
-  send_packet(packets, 2, pin); // idle packet
+  send_packet(packets, 2); // idle packet
 }
 
 void print_port(uint8_t port_outputs) {
@@ -171,84 +280,97 @@ void print_port(uint8_t port_outputs) {
 int main(void) {
   mcu_init(1);
 
-  pins_t L = PB7;
-  pins_t R = PB6;
-  pins_t SIGNAL = PB6; // control signal
+
+  decoder_addr = eeprom_read_word(&ee_decoder_addr);
+  if (decoder_addr == 0xffff) decoder_addr = 0x10b; // default 267
+  DF("address in use: %u\n", decoder_addr);
 
   pins_output(&L, 1);
   pins_output(&R, 1);
-  pins_output(&SIGNAL, 1);
-  pins_set(&SIGNAL, 1);
+  pins_set(&R, 1);
+  pins_set(&L, 0);
+
+  pins_output(&PA7, 1);
+  pins_set(&PA7, 0);
 
   uint8_t port_outputs = 0;
   uint8_t fill_with_idle = 0;
 
   timer_init();
 
-  DL("usage:\n 1/2: basic accessory 9bit\n 3/4: multifunction decoder (extended address mode 14bit)\n 5: one idle packet\n 6: idle packets in between");
+  DL("usage:\n\
+  1/2 : basic accessory 9bit\n\
+  3/4 : multifunction decoder (extended address mode 14bit)\n\
+  5   : one idle packet\n\
+  6   : idle packets in between\n\
+  7   : 25 reset packets\n\
+  8   : send address change in ops mode\n\
+  addr: change command address");
 
   while  (1) {
     switch (port) {
       case 1:
-        track_switch(0x10b, 1, 0, &SIGNAL); // address 267
+        basic_accessory(decoder_addr, 1, 0);
         port_outputs &= !(1 << 7); // clear bit 7
-        print_port(port_outputs);
+        if (!fill_with_idle) print_port(port_outputs); // avoid times without packets
         port = 0;
         break;
       case 2:
-        track_switch(0x10b, 1, 1, &SIGNAL);
+        basic_accessory(decoder_addr, 1, 1);
         port_outputs |= (1 << 7); // set bit 7
-        print_port(port_outputs);
+        if (!fill_with_idle) print_port(port_outputs);
         port = 0;
         break;
       case 3:
-        multifunction_decoder(0x7d0, 0x1, 0, &SIGNAL);
+        multifunction(decoder_addr, 0x1, 0);
         port_outputs &= ~(1<<3); // set bit 3
-        print_port(port_outputs);
+        if (!fill_with_idle) print_port(port_outputs);
         port = 0;
+        break;
       case 4:
-        multifunction_decoder(0x7d0, 0x1, 1, &SIGNAL); // address 2000
+        multifunction(decoder_addr, 0x1, 1);
         port_outputs |= (1<<3); // set bit 3
-        print_port(port_outputs);
+        if (!fill_with_idle) print_port(port_outputs);
         port = 0;
-        /*
-        uint8_t packets[2];
-        packets[0] = 0x05;
-        packets[1] = 0x64;
-        send_packet(packets, 2, &SIGNAL);
-        */
-
-        /*
-        for (uint8_t i=0; i<12; i++) send_bit(1, &SIGNAL);
-        send_bit(0, &SIGNAL);
-        send_byte(0x05, &SIGNAL);
-        send_bit(0, &SIGNAL);
-        send_byte(0x64, &SIGNAL);
-        send_bit(0, &SIGNAL);
-        send_byte(0x61, &SIGNAL);
-        send_bit(1, &SIGNAL);
-        pins_set(&SIGNAL, 1);
-        */
-
-        /*
-        uint8_t packets[2];
-        packets[0] = 0x80 | 0x03;
-        packets[1] = 0x00;
-        send_packet(packets, 2, &SIGNAL);
-        */
         break;
       case 5:
-        idle_packet(&SIGNAL);
+        idle_packet();
         port = 0;
         break;
       case 6:
         fill_with_idle = !fill_with_idle;
         DF("fill with idle: %s\n", fill_with_idle ? "yes" : "no");
         port = 0;
+        break;
+      case 7:
+        {
+          // 25 reset packets
+          uint8_t packets[2] = {0};
+          pins_set(&PA7, 0);
+          for (uint8_t c=0; c<25; c++) {
+            send_packet(packets, 2);
+          }
+          pins_set(&PA7, 1);
+          port = 0;
+        }
+        break;
+      case 8:
+        {
+          // update cv1 and cv9 in ops mode
+          // eg address 267 = 0x10b
+          uint16_t new_addr = 24;
+          basic_accessory_programming(decoder_addr, 1, new_addr & 0xff);        // CV1 = decoder address LSB
+          // basic_accessory_programming(decoder_addr, 9, (new_addr >> 8) & 0x01); // CV9 = decoder address MSB
+          if (!fill_with_idle) DF("service mode new addr: %u\n", new_addr);
+          port = 0;
+        }
+        break;
+      case 9:
+        break;
     }
 
     if (fill_with_idle) {
-      idle_packet(&SIGNAL);
+      idle_packet();
     }
   }
 }
