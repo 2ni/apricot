@@ -61,10 +61,13 @@ def on_press(key):
         # print("single: " + k)
         client.write(k.encode())
     except AttributeError:
-        k = key.name  # other keys
-        # print("other: " + k)
-        if k == "enter":
-            client.write("\n".encode())
+        try:
+            k = key.name  # other keys
+            # print("other: " + k)
+            if k == "enter":
+                client.write("\n".encode())
+        except:
+            pass
 
 
 listener = keyboard.Listener(on_press=on_press)
