@@ -4,6 +4,7 @@
  * TX=PA1
  * RX=PA2
  *
+ * ring buffer based on https://www.mikrocontroller.net/articles/AVR-GCC-Tutorial/Der_UART
  */
 
 #include <stdlib.h>
@@ -22,9 +23,6 @@ static uint8_t tx_buff[TX_BUFF_SIZE];
 static uint8_t tx_in;
 volatile uint8_t tx_out;
 
-// count up and wrap around
-#define ROLLOVER( x, max )  x = ++x >= max ? 0 : x
-
 // TEST defined in Makefile of tests/
 #ifndef TEST
 ISR(USART0_DRE_vect) {
@@ -35,7 +33,7 @@ ISR(USART0_DRE_vect) {
   }
 
   USART0.TXDATAL = tx_buff[tx_out];
-  ROLLOVER (tx_out, TX_BUFF_SIZE);
+  uart_rollover(&tx_out, TX_BUFF_SIZE);
 }
 #endif
 
@@ -130,7 +128,7 @@ void uart_tuple(const char* key, char* value) {
  */
 void uart_send_char(unsigned char c) {
   uint8_t next = tx_in;
-  ROLLOVER (next, TX_BUFF_SIZE);
+  uart_rollover(&next, TX_BUFF_SIZE);
   tx_buff[tx_in] = c;
   // wait until at least one byte free
   while (next == tx_out);
@@ -239,6 +237,30 @@ void uart_arr(const char *name, uint8_t *arr, uint8_t len, uint8_t newline) {
     DF(" %02x", arr[i]);
   }
   if (newline) DL("");
+}
+
+/*
+ * increment value and wrap around if > max
+ * (for ring buffer)
+ */
+void uart_rollover(uint8_t *value, uint8_t max) {
+  *value = ++*value >= max ? 0 : *value;
+}
+
+void uart_rollover(volatile uint8_t *value, uint8_t max) {
+  *value = ++*value >= max ? 0 : *value;
+}
+
+/*
+ * decrement value and wrap around if < 0
+ * (for ring buffer)
+ */
+void uart_rollbefore(uint8_t *value, uint8_t max) {
+  *value = *value == 0 ? max - 1 : *value - 1;
+}
+
+void uart_rollbefore(volatile uint8_t *value, uint8_t max) {
+  *value = *value == 0 ? max - 1 : *value - 1;
 }
 
 /*
