@@ -61,9 +61,6 @@ def on_press(key):
         # print("single: " + k)
         client.write(k.encode())
     except AttributeError:
-        # ignore keypress ^
-        pass
-    except:
         k = key.name  # other keys
         # print("other: " + k)
         if k == "enter":
