@@ -267,4 +267,6 @@ typedef struct USART_struct
 #define USART_TXCIF_bm  0x40
 #define USART_DREIF_bm  0x20
 
+#define USART_DREIE_bm 0x20
+
 #endif
