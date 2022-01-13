@@ -27,7 +27,7 @@ CMD_STATE::Type_Cmd_State cmd_state = CMD_STATE::NONE;
 pins_t R = PB6; // also control output
 pins_t L = PB7;
 uint16_t EEMEM ee_decoder_addr;
-uint16_t decoder_addr;
+volatile uint16_t decoder_addr;
 
 /*
  * get <num_of_chars> chars before current pointer of ring buffer
@@ -86,8 +86,9 @@ ISR(USART0_RXC_vect) {
         for (uint8_t i=0; i<l; i++) {
           addr = addr*10 + addr_in[i] - '0';
         }
-        DF("address in use: %u\n", addr);
         eeprom_update_word(&ee_decoder_addr, addr);
+        decoder_addr = addr;
+        DF("address in use: %u\n", decoder_addr);
         cmd_state = CMD_STATE::NONE;
         break;
     }
@@ -188,7 +189,7 @@ void send_packet(uint8_t *packets, uint8_t len) {
 
 /*
  * Basic accessory decoder 9bit address
- * {preamble} 0 10AAAAAA 0 1AAACDDD 0 EEEEEEEE 1
+ * {preamble} 0 10AAAAAA 0 1AAACDDR 0 EEEEEEEE 1
  * example  weiche / turnout / track switch
  *
  */
@@ -200,6 +201,20 @@ void basic_accessory(uint16_t addr, uint8_t local_addr, uint8_t output) {
   // DF("addr: 0x%03x, local: 0x%02x, a: 0x%02x, d: 0x%02x\n", addr, local_addr, a, d);
   pins_set(&PA7, 0);
   send_packet(packets, 2);
+  pins_set(&PA7, 1);
+}
+
+/*
+ * Extended accessory decoder 11bit address
+ * {preamble} 0 10AAAAAA 0 0AAA0AA1 0 000XXXXX 0 EEEEEEEE 1
+ */
+void extended_accessory(uint16_t addr, uint8_t output) {
+  uint8_t packets[3];
+  packets[0] = 0x80 | ((addr & 0xfc)>>2);
+  packets[1] = 0x01 | ((~addr & 0x700)>>4) | ((addr & 0x03)<<1);
+  packets[2] = output;
+  pins_set(&PA7, 0);
+  send_packet(packets, 3);
   pins_set(&PA7, 1);
 }
 
@@ -310,13 +325,15 @@ int main(void) {
   while  (1) {
     switch (port) {
       case 1:
-        basic_accessory(decoder_addr, 1, 0);
+        // basic_accessory(decoder_addr, 1, 0);
+        extended_accessory(decoder_addr, 0);
         port_outputs &= !(1 << 7); // clear bit 7
         if (!fill_with_idle) print_port(port_outputs); // avoid times without packets
         port = 0;
         break;
       case 2:
-        basic_accessory(decoder_addr, 1, 1);
+        // basic_accessory(decoder_addr, 1, 1);
+        extended_accessory(decoder_addr, 1);
         port_outputs |= (1 << 7); // set bit 7
         if (!fill_with_idle) print_port(port_outputs);
         port = 0;
