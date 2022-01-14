@@ -188,17 +188,40 @@ void send_packet(uint8_t *packets, uint8_t len) {
 }
 
 /*
- * Basic accessory decoder 9bit address
+ * Basic accessory decoder 11bit address
  * {preamble} 0 10AAAAAA 0 1AAACDDR 0 EEEEEEEE 1
  * example  weiche / turnout / track switch
  *
+ * weiche 5 = module addr (AAAAAAAAA): 2, port (DD): 1 (port 1-4 are sent as 0-3)
+ *            0 10000010 0 11110001 (0x82 0xf0)
+ *
+ * each module_addr (9bit) has 4 ports (1-4)
  */
-void basic_accessory(uint16_t addr, uint8_t local_addr, uint8_t output) {
+void basic_accessory(uint16_t addr, uint8_t activation, uint8_t output) {
   uint8_t packets[2];
-  packets[0] = 0x80 | (addr & 0x3f); // a 128-191: 10AAAAAA, 1AAA1BBR (sometimes: 11AAAAAA, 1AAACDDD)
-  //                  ----------- AAA -----------   - C -    ---------- BB ----------   ------ R ------
-  packets[1] = 0x88 | ((~addr & 0x1c0)>>2) | ((local_addr & 0x03)<<1) | (output & 0x01);
-  // DF("addr: 0x%03x, local: 0x%02x, a: 0x%02x, d: 0x%02x\n", addr, local_addr, a, d);
+  // see https://wiki.rocrail.net/doku.php?id=addressing:accessory-pg-de
+  // addr starts at 1
+  uint8_t module_addr = (addr - 1) / 4 + 1;
+  uint8_t port = (addr - 1) % 4 + 1;
+
+  packets[0] = 0x80 | (module_addr & 0x3f);
+  packets[1] = 0x80 | ((~module_addr & 0x1c0)>>2) | (((port - 1) & 0x03)<<1) | (activation ? 0x01<<3 : 0) | (output ? 0x01 : 0);
+  pins_set(&PA7, 0);
+  send_packet(packets, 2);
+  pins_set(&PA7, 1);
+}
+
+/*
+ * Basic accessory decoder 11bit address according to https://normen.railcommunity.de/RCN-213.pdf
+ * {preamble} 0 10AAAAAA 0 1AADAAR 0 EEEEEEEE 1
+ * D: activation
+ * R: output (0=left, 1=right)
+ *
+ */
+void basic_accessory11(uint16_t addr, uint8_t activation, uint8_t output) {
+  uint8_t packets[2];
+  packets[0] = 0x80 | ((addr & 0xfc)>>2);
+  packets[1] = 0x80 | ((~addr & 0x700)>>4) | ((addr & 0x03)<<1) | (activation ? 0x01<<3 : 0) | (output ? 0x01 : 0);
   pins_set(&PA7, 0);
   send_packet(packets, 2);
   pins_set(&PA7, 1);
@@ -297,7 +320,7 @@ int main(void) {
 
 
   decoder_addr = eeprom_read_word(&ee_decoder_addr);
-  if (decoder_addr == 0xffff) decoder_addr = 0x10b; // default 267
+  if (decoder_addr == 0xffff) decoder_addr = 0x05; // default 267=0x10b
   DF("address in use: %u\n", decoder_addr);
 
   pins_output(&L, 1);
@@ -325,15 +348,17 @@ int main(void) {
   while  (1) {
     switch (port) {
       case 1:
-        // basic_accessory(decoder_addr, 1, 0);
-        extended_accessory(decoder_addr, 0);
+        basic_accessory(decoder_addr, 0, 0); // addr, activation, output
+        // basic_accessory11(decoder_addr, 0, 1); // activation, output
+        // extended_accessory(decoder_addr, 0);
         port_outputs &= !(1 << 7); // clear bit 7
         if (!fill_with_idle) print_port(port_outputs); // avoid times without packets
         port = 0;
         break;
       case 2:
-        // basic_accessory(decoder_addr, 1, 1);
-        extended_accessory(decoder_addr, 1);
+        basic_accessory(decoder_addr, 0, 1);
+        // basic_accessory11(decoder_addr, 1, 1);
+        // extended_accessory(decoder_addr, 1);
         port_outputs |= (1 << 7); // set bit 7
         if (!fill_with_idle) print_port(port_outputs);
         port = 0;
