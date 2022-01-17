@@ -329,14 +329,6 @@ int main(void) {
                 // multifunction decoder 14bit
                 // {preamble} 0 11AAAAAA 0 AAAAAAAA 0 CCCDDDDD 0 EEEEEEEE 1
                 // cv access short form only in ops mode (for 7bit or 14bt) for engines (see RCN214, p.6)
-                else if (dcc_packets[0] >= 192 && dcc_packets[0] <= 231) {
-                  uint16_t addr = ((dcc_packets[0] & 0x3f) << 8) | dcc_packets[1];
-                  uint8_t data_type = dcc_packets[2] & 0xe0;
-                  uint8_t data = dcc_packets[2] & 0x1f;
-                  DF("addr (14bit): %u (0x%04x) type: 0x%02x, data: 0x%02x\n", addr, addr, data_type, data);
-                  if (addr == 2000) {
-                    move_turnout(data & 0x01);
-                  }
                 // basic accessory decoder 9bit   {preamble} 0 10AAAAAA 0 1AAACDDR 0 EEEEEEEE 1
                 // basic accessory decoder 11bit  {preamble} 0 10AAAAAA 0 1AAACAAR 0 EEEEEEEE 1
                 //
@@ -350,7 +342,7 @@ int main(void) {
                 // RCN216: service mode ack: 5-7ms +60mA power consumption after reception of every packet
                 // RCN216: leave prg modus if normal packet or 30ms since reset/cv access packet
                 // beim Programmiermodus mit isoliertem Gleisabschnitt: entsprechenden Pakete beginnen direkt mit den Befehlsbytes ohne Adresse
-                } else if (dcc_packets[0] >= 128 && dcc_packets[0] <= 191 && (dcc_packets[1] & 0x80)) {
+                else if (dcc_packets[0] >= 128 && dcc_packets[0] <= 191 && (dcc_packets[1] & 0x80)) {
                   // cv access (ops mode): 10AAAAAA 0 1AAA1DD0 0 1110CCVV 0 VVVVVVVV 0 DDDDDDDD
                   if (dcc_packets_count > 3 && (dcc_packets[1] & 0x89) == 0x88 && (dcc_packets[2] & 0xf0) == 0xe0) {
                     update_cv(PRG::OPS, dcc_packets, &dcc_packets_count);
@@ -383,7 +375,10 @@ int main(void) {
                 //          https://dccwiki.com/Configuration_Variable
                 } else if (dcc_packets[0] >= 128 && dcc_packets[0] <= 191 && (dcc_packets[1] & 0x89) == 0x01) {
                   uint16_t addr = ((dcc_packets[0] & 0x3f)<<2) | ((uint16_t)((~dcc_packets[1] & 0x70))<<4) | ((dcc_packets[1] & 0x06)>>1);
-                  DF("extended: (11bit): %u (0x%04x), data: 0x%02x. Not implemented\n", addr, addr, dcc_packets[2]);
+                  DF("extended: (11bit): %u (0x%04x), data: 0x%02x\n", addr, addr, dcc_packets[2]);
+                  if (addr == address) {
+                    move_turnout(dcc_packets[2] & 0x01);
+                  }
                 }
               }
               state_packet = DCC_STATE::WAITPREAMBLE;

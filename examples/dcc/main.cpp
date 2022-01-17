@@ -13,16 +13,30 @@
 #include "string.h"
 
 volatile uint8_t done = 0;
-volatile uint8_t port = 0;
 char buff[8];
 volatile uint8_t buff_p = 0;
 namespace CMD_STATE {
   typedef enum {
-    NONE = 0,
-    ADDR = 1,
+    NONE,
+    TURN_LEFT,
+    TURN_RIGHT,
+    TOGGLE_IDLE,
+    TOGGLE_EXTENDED,
+    RESET,
+    CHANGE,
+    CMD_ADDR_WAITFOR,
+    SHOW_HELP,
   } Type_Cmd_State;
 }
-CMD_STATE::Type_Cmd_State cmd_state = CMD_STATE::NONE;
+CMD_STATE::Type_Cmd_State cmd_state = CMD_STATE::SHOW_HELP;
+
+namespace PRG {
+  typedef enum {
+    SERVICE = 0,
+    OPS = 1,
+  } Type_Prg_Mode;
+}
+
 
 pins_t R = PB6; // also control output
 pins_t L = PB7;
@@ -57,40 +71,51 @@ ISR(USART0_RXC_vect) {
 
   if (cmd_state == CMD_STATE::NONE) {
     switch (in) {
-      case '1': port = 1; break;
-      case '2': port = 2; break;
-      case '3': port = 3; break;
-      case '4': port = 4; break;
-      case '5': port = 5; break;
-      case '6': port = 6; break;
-      case '7': port = 7; break;
-      case '8': port = 8; break;
-      case '9': port = 9; break;
+      case '1': cmd_state = CMD_STATE::TURN_LEFT; break;
+      case '2': cmd_state = CMD_STATE::TURN_RIGHT; break;
+      case '3': cmd_state = CMD_STATE::TOGGLE_IDLE; break;
+      case '4': cmd_state = CMD_STATE::TOGGLE_EXTENDED; break;
+      case '5': cmd_state = CMD_STATE::RESET; break;
+      case '6': cmd_state = CMD_STATE::CHANGE; break;
     }
   }
 
   if (in == '\n') {
-    switch (cmd_state) {
-      case CMD_STATE::NONE:
-        char cmd[5];
-        get_prev_chars(buff, cmd, 4);
-        if (!strcmp(cmd, "addr")) {
-          cmd_state = CMD_STATE::ADDR;
-          D("enter new address...");
-        }
-        break;
-      case CMD_STATE::ADDR:
-        char addr_in[8];
-        uint8_t l = get_prev_chars(buff, addr_in, 7);
-        uint16_t addr = 0;
-        for (uint8_t i=0; i<l; i++) {
-          addr = addr*10 + addr_in[i] - '0';
-        }
-        eeprom_update_word(&ee_decoder_addr, addr);
-        decoder_addr = addr;
-        DF("address in use: %u\n", decoder_addr);
-        cmd_state = CMD_STATE::NONE;
-        break;
+    if (cmd_state == CMD_STATE::NONE) {
+      char cmd[5];
+      get_prev_chars(buff, cmd, 4);
+      if (!strcmp(cmd, "addr")) {
+        cmd_state = CMD_STATE::CMD_ADDR_WAITFOR;
+        D("enter new address...");
+      }
+      else if (!strcmp(cmd, "help")) {
+        cmd_state = CMD_STATE::SHOW_HELP;
+      }
+    }
+
+    else if (cmd_state == CMD_STATE::CMD_ADDR_WAITFOR) {
+      char addr_in[8];
+      uint8_t l = get_prev_chars(buff, addr_in, 7);
+      uint16_t addr = 0;
+      uint8_t base = 10;
+      uint8_t start = 0;
+      // if addr_char 0x1234 -> hex
+      if (addr_in[1] == 'x') {
+        base = 16;
+        start = 2;
+      }
+      // if addr_char 0b10101 -> binary
+      else if (addr_in[1] == 'b') {
+        base = 2;
+        start = 2;
+      }
+      for (uint8_t i=start; i<l; i++) {
+        addr = addr*base + addr_in[i] - '0';
+      }
+      eeprom_update_word(&ee_decoder_addr, addr);
+      decoder_addr = addr;
+      DF("address in use: %u (0x%04x)\n", decoder_addr, decoder_addr);
+      cmd_state = CMD_STATE::NONE;
     }
 
     // clear ring buffer
@@ -188,6 +213,18 @@ void send_packet(uint8_t *packets, uint8_t len) {
 }
 
 /*
+ * convert eg turnout address to module address and port
+ * (for basic accessories)
+ * see https://wiki.rocrail.net/doku.php?id=addressing:accessory-pg-de
+ * addr starts at 1
+ * module starts at 1 (except for lenz / roco it starts at 0)
+ */
+void split_addr(uint16_t addr, uint8_t *module_addr, uint8_t *port, uint8_t is_roco) {
+  *module_addr = (addr - 1) / 4 + (is_roco ? 0 : 1);
+  *port = (addr - 1) % 4 + 1;
+}
+
+/*
  * Basic accessory decoder 11bit address
  * {preamble} 0 10AAAAAA 0 1AAACDDR 0 EEEEEEEE 1
  * example  weiche / turnout / track switch
@@ -197,12 +234,11 @@ void send_packet(uint8_t *packets, uint8_t len) {
  *
  * each module_addr (9bit) has 4 ports (1-4)
  */
-void basic_accessory(uint16_t addr, uint8_t activation, uint8_t output) {
+void basic_accessory(uint16_t addr, uint8_t activation, uint8_t output, uint8_t is_roco = 0) {
   uint8_t packets[2];
-  // see https://wiki.rocrail.net/doku.php?id=addressing:accessory-pg-de
-  // addr starts at 1
-  uint8_t module_addr = (addr - 1) / 4 + 1;
-  uint8_t port = (addr - 1) % 4 + 1;
+  uint8_t module_addr;
+  uint8_t port;
+  split_addr(addr, &module_addr, &port, is_roco);
 
   packets[0] = 0x80 | (module_addr & 0x3f);
   packets[1] = 0x80 | ((~module_addr & 0x1c0)>>2) | (((port - 1) & 0x03)<<1) | (activation ? 0x01<<3 : 0) | (output ? 0x01 : 0);
@@ -212,23 +248,43 @@ void basic_accessory(uint16_t addr, uint8_t activation, uint8_t output) {
 }
 
 /*
- * Basic accessory decoder 11bit address according to https://normen.railcommunity.de/RCN-213.pdf
- * {preamble} 0 10AAAAAA 0 1AADAAR 0 EEEEEEEE 1
- * D: activation
- * R: output (0=left, 1=right)
+ * accessory decoder configuration variable access
+ * basic/ops     {preamble} 0 10AAAAAA 0 1AAA1AA0 0 1110CCVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
+ * basic/service {preamble} 0                       0111CCVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
  *
+ * CC: 00=reserved, 01=verify byte, 11=writy byte, 10=bit manipulation
+ * VVVVVVVVVV: 10bit address for CV1-1024
+ * DDDDDDDD: data of CV
+ *
+ * cv_addr: 1-1024
  */
-void basic_accessory11(uint16_t addr, uint8_t activation, uint8_t output) {
-  uint8_t packets[2];
-  packets[0] = 0x80 | ((addr & 0xfc)>>2);
-  packets[1] = 0x80 | ((~addr & 0x700)>>4) | ((addr & 0x03)<<1) | (activation ? 0x01<<3 : 0) | (output ? 0x01 : 0);
+void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, uint16_t cv_addr, uint8_t cv_data, uint8_t is_roco = 0) {
+  uint8_t packets[5] = {0};
+  uint8_t module_addr;
+  uint8_t port;
+  uint8_t cc = 0x3; // default write
+  uint8_t index = 0;
+  uint8_t cmd_start = 0b0111<<4;
+
+  cv_addr -= 1; // 1-1024
+  split_addr(addr, &module_addr, &port, is_roco);
+  if (mode == PRG::OPS) {
+    packets[0] = 0x80 | (module_addr & 0x3f);
+    packets[1] = 0x88 | ((~module_addr & 0x1c0)>>2) | (((port - 1) & 0x03)<<1);
+    index += 2;
+    cmd_start = 0b1110<<4;
+  }
+
+  packets[index] = cmd_start | (cc<<2) | ((cv_addr & 0x300)>>8);
+  packets[index + 1] = 0xff & cv_addr;
+  packets[index + 2] = cv_data;
   pins_set(&PA7, 0);
-  send_packet(packets, 2);
+  send_packet(packets, 5);
   pins_set(&PA7, 1);
 }
 
 /*
- * Extended accessory decoder 11bit address
+ * extended accessory decoder 11bit address
  * {preamble} 0 10AAAAAA 0 0AAA0AA1 0 000XXXXX 0 EEEEEEEE 1
  */
 void extended_accessory(uint16_t addr, uint8_t output) {
@@ -242,33 +298,41 @@ void extended_accessory(uint16_t addr, uint8_t output) {
 }
 
 /*
- * basic accessory decoder 9bit address configuration variable access
- * {preamble}   10AAAAAA 0 1AAACDDD 0 1110CCVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
- * example #P 0 10001011 0 10111000 0 11101100 0 00000000 0 00011000 0 11000111 1
+ * extended accessory decoder configuration variable access
+ * basic/ops     {preamble} 0 10AAAAAA 0 0AAA0AA1 0 1110CCVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
+ * basic/service {preamble} 0                       0111CCVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
  *
  * CC: 00=reserved, 01=verify byte, 11=writy byte, 10=bit manipulation
  * VVVVVVVVVV: 10bit address for CV1-1024
  * DDDDDDDD: data of CV
- * CDDD=0000 then the CVs refer to the entire decoder
  *
- * only write for now
  * cv_addr: 1-1024
  */
-void basic_accessory_programming(uint16_t addr, uint16_t cv_addr, uint8_t cv_data) {
+void extended_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, uint8_t cv_addr, uint8_t cv_data) {
   uint8_t packets[5] = {0};
-  cv_addr -= 1;
-  packets[0] = 0x80 | (addr & 0x3f);
-  packets[1] = 0x88 | ((~addr & 0x1c0)>>2);
-  packets[2] = 0xe0 | (3<<2) | ((cv_addr & 0x300)>>8); // CC=11 (write byte)
-  packets[3] = 0xff & cv_addr;
-  packets[4] = cv_data;
+  uint8_t cc = 0x3; // default write
+  uint8_t index = 0;
+  uint8_t cmd_start = 0b0111<<4;
+
+  cv_addr -= 1; // 1-1024
+  if (mode == PRG::OPS) {
+    packets[0] = 0x80 | ((addr & 0xfc)>>2);
+    packets[1] = 0x88 | ((~addr & 0x700)>>4) | ((addr & 0x03)<<1);
+    index += 2;
+    cmd_start = 0b1110<<4;
+  }
+
+  packets[index] = cmd_start | (cc<<2) | ((cv_addr & 0x300)>>8);
+  packets[index + 1] = 0xff & cv_addr;
+  packets[index + 2] = cv_data;
   pins_set(&PA7, 0);
   send_packet(packets, 5);
   pins_set(&PA7, 1);
 }
 
 /*
- * Extended address mode multifunction decoder
+ * Multifunction decoder (extended)
+ * (locomotives, ...)
  *
  * type see https://dccwiki.com/Digital_Packet
  * b000 decoder and consist control instructions
@@ -308,11 +372,11 @@ void idle_packet() {
   send_packet(packets, 2); // idle packet
 }
 
-void print_port(uint8_t port_outputs) {
+void print_outputs(uint8_t port_outputs) {
   char buf[9];
   bitwise(buf, port_outputs);
   buf[8] = '\0';
-  DF("ports (%u): %s\n", port, buf);
+  DF("outputs: %s\n", buf);
 }
 
 int main(void) {
@@ -333,58 +397,43 @@ int main(void) {
 
   uint8_t port_outputs = 0;
   uint8_t fill_with_idle = 0;
+  uint8_t is_extended_mode = 0;
 
   timer_init();
 
-  DL("usage:\n\
-  1/2 : basic accessory 9bit\n\
-  3/4 : multifunction decoder (extended address mode 14bit)\n\
-  5   : one idle packet\n\
-  6   : idle packets in between\n\
-  7   : 25 reset packets\n\
-  8   : send address change in ops mode\n\
-  addr: change command address");
-
   while  (1) {
-    switch (port) {
-      case 1:
-        basic_accessory(decoder_addr, 0, 0); // addr, activation, output
-        // basic_accessory11(decoder_addr, 0, 1); // activation, output
-        // extended_accessory(decoder_addr, 0);
+    switch (cmd_state) {
+      case CMD_STATE::TURN_LEFT:
+        if (is_extended_mode) {
+          extended_accessory(decoder_addr, 0);
+        } else {
+          basic_accessory(decoder_addr, 0, 0, 0); // addr, activation, output, is_roco
+        }
         port_outputs &= !(1 << 7); // clear bit 7
-        if (!fill_with_idle) print_port(port_outputs); // avoid times without packets
-        port = 0;
+        if (!fill_with_idle) print_outputs(port_outputs); // avoid times without packets
+        cmd_state = CMD_STATE::NONE;
         break;
-      case 2:
-        basic_accessory(decoder_addr, 0, 1);
-        // basic_accessory11(decoder_addr, 1, 1);
-        // extended_accessory(decoder_addr, 1);
+      case CMD_STATE::TURN_RIGHT:
+        if (is_extended_mode) {
+          extended_accessory(decoder_addr, 1);
+        } else {
+          basic_accessory(decoder_addr, 0, 1, 0);
+        }
         port_outputs |= (1 << 7); // set bit 7
-        if (!fill_with_idle) print_port(port_outputs);
-        port = 0;
+        if (!fill_with_idle) print_outputs(port_outputs);
+        cmd_state = CMD_STATE::NONE;
         break;
-      case 3:
-        multifunction(decoder_addr, 0x1, 0);
-        port_outputs &= ~(1<<3); // set bit 3
-        if (!fill_with_idle) print_port(port_outputs);
-        port = 0;
-        break;
-      case 4:
-        multifunction(decoder_addr, 0x1, 1);
-        port_outputs |= (1<<3); // set bit 3
-        if (!fill_with_idle) print_port(port_outputs);
-        port = 0;
-        break;
-      case 5:
-        idle_packet();
-        port = 0;
-        break;
-      case 6:
+      case CMD_STATE::TOGGLE_IDLE:
         fill_with_idle = !fill_with_idle;
         DF("fill with idle: %s\n", fill_with_idle ? "yes" : "no");
-        port = 0;
+        cmd_state = CMD_STATE::NONE;
         break;
-      case 7:
+      case CMD_STATE::TOGGLE_EXTENDED:
+        is_extended_mode = !is_extended_mode;
+        DF("extended mode: %s\n", is_extended_mode ? "extended" : "basic");
+        cmd_state = CMD_STATE::NONE;
+        break;
+      case CMD_STATE::RESET:
         {
           // 25 reset packets
           uint8_t packets[2] = {0};
@@ -393,21 +442,44 @@ int main(void) {
             send_packet(packets, 2);
           }
           pins_set(&PA7, 1);
-          port = 0;
+          cmd_state = CMD_STATE::NONE;
         }
         break;
-      case 8:
+      case CMD_STATE::CHANGE:
         {
           // update cv1 and cv9 in ops mode
           // eg address 267 = 0x10b
           uint16_t new_addr = 24;
-          basic_accessory_programming(decoder_addr, 1, new_addr & 0xff);        // CV1 = decoder address LSB
-          // basic_accessory_programming(decoder_addr, 9, (new_addr >> 8) & 0x01); // CV9 = decoder address MSB
+          basic_accessory_prg(decoder_addr, PRG::OPS, 1, new_addr & 0xff);        // CV1 = decoder address LSB
+          // basic_accessory_prg(decoder_addr, PRG::OPS, 9, (new_addr >> 8) & 0x01); // CV9 = decoder address MSB
           if (!fill_with_idle) DF("service mode new addr: %u\n", new_addr);
-          port = 0;
+          cmd_state = CMD_STATE::NONE;
         }
         break;
-      case 9:
+      case CMD_STATE::NONE:
+        break;
+      case CMD_STATE::CMD_ADDR_WAITFOR:
+        // handled in ISR
+        break;
+      case CMD_STATE::SHOW_HELP:
+        DF("usage:\n\
+  %u : send turn left\n\
+  %u : send turn right\n\
+  %u : toggle idle packets in between " WARN("%s")"\n\
+  %u : toogle basic/extended mode " WARN("%s")"\n\
+  %u : 25 reset packets\n\
+  %u : send address change in ops mode\n",
+          CMD_STATE::TURN_LEFT,
+          CMD_STATE::TURN_RIGHT,
+          CMD_STATE::TOGGLE_IDLE,
+          fill_with_idle ? "yes" : "no",
+          CMD_STATE::TOGGLE_EXTENDED,
+          is_extended_mode ? "extended" : "basic",
+          CMD_STATE::RESET,
+          CMD_STATE::CHANGE
+        );
+        DF("  addr: change command address " WARN("%u/0x%03x") "\n  help: show this help\n", decoder_addr, decoder_addr);
+        cmd_state = CMD_STATE::NONE;
         break;
     }
 
