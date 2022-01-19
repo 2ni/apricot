@@ -22,6 +22,8 @@ namespace CMD_STATE {
     TURN_RIGHT,
     TOGGLE_IDLE,
     TOGGLE_EXTENDED,
+    TOGGLE_PRG_CMD_TYPE,
+    TOGGLE_PRG_MODE,
     RESET,
     CHANGE,
     CMD_ADDR_WAITFOR,
@@ -35,6 +37,13 @@ namespace PRG {
     SERVICE = 0,
     OPS = 1,
   } Type_Prg_Mode;
+
+  typedef enum {
+    RESERVED = 0,
+    READ = 0b01,
+    WRITE = 0b11,
+    BIT = 0b10,
+  } Type_Prg_Cmd_Type;
 }
 
 
@@ -75,8 +84,10 @@ ISR(USART0_RXC_vect) {
       case '2': cmd_state = CMD_STATE::TURN_RIGHT; break;
       case '3': cmd_state = CMD_STATE::TOGGLE_IDLE; break;
       case '4': cmd_state = CMD_STATE::TOGGLE_EXTENDED; break;
-      case '5': cmd_state = CMD_STATE::RESET; break;
-      case '6': cmd_state = CMD_STATE::CHANGE; break;
+      case '5': cmd_state = CMD_STATE::TOGGLE_PRG_CMD_TYPE; break;
+      case '6': cmd_state = CMD_STATE::TOGGLE_PRG_MODE; break;
+      case '7': cmd_state = CMD_STATE::RESET; break;
+      case '8': cmd_state = CMD_STATE::CHANGE; break;
     }
   }
 
@@ -191,9 +202,9 @@ void send_byte(uint8_t data) {
  *
  * we only support 3bytes (addr, data, xor)
  */
-void send_packet(uint8_t *packets, uint8_t len) {
+void send_packet(uint8_t *packets, uint8_t len, PRG::Type_Prg_Mode mode = PRG::OPS) {
   // preamble
-  for (uint8_t c=0; c<12; c++) send_bit(1);
+  for (uint8_t c=0; c<(mode == PRG::OPS ? 12 : 20); c++) send_bit(1);
 
   // data
   uint8_t x = 0;
@@ -245,6 +256,7 @@ void basic_accessory(uint16_t addr, uint8_t activation, uint8_t output, uint8_t 
   pins_set(&PA7, 0);
   send_packet(packets, 2);
   pins_set(&PA7, 1);
+  // uart_arr("packets", packets, 2);
 }
 
 /*
@@ -257,30 +269,41 @@ void basic_accessory(uint16_t addr, uint8_t activation, uint8_t output, uint8_t 
  * DDDDDDDD: data of CV
  *
  * cv_addr: 1-1024
+ * mode:     PRG::OPS, PRG::SERVICE
+ * cmd_type: PRG::READ, PRG::WRITE, (not yet supported: PRG::BIT)
+ * addr is ignored if PRG::SERVICE
  */
-void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, uint16_t cv_addr, uint8_t cv_data, uint8_t is_roco = 0) {
+void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_Cmd_Type cmd_type, uint16_t cv_addr, uint8_t cv_data, uint8_t is_roco = 0) {
   uint8_t packets[5] = {0};
   uint8_t module_addr;
   uint8_t port;
-  uint8_t cc = 0x3; // default write
   uint8_t index = 0;
-  uint8_t cmd_start = 0b0111<<4;
+  uint8_t num = 3;
+  uint8_t cmd_start = 0b0111<<4; // service
 
-  cv_addr -= 1; // 1-1024
+  // send reset packets 1st
+  for (uint8_t c=0; c<25; c++) {
+    send_packet(packets, 2);
+  }
+
+  cv_addr -= 1; // input: 1-1024
   split_addr(addr, &module_addr, &port, is_roco);
   if (mode == PRG::OPS) {
     packets[0] = 0x80 | (module_addr & 0x3f);
     packets[1] = 0x88 | ((~module_addr & 0x1c0)>>2) | (((port - 1) & 0x03)<<1);
     index += 2;
+    num += 2;
     cmd_start = 0b1110<<4;
   }
 
-  packets[index] = cmd_start | (cc<<2) | ((cv_addr & 0x300)>>8);
+  packets[index] = cmd_start | (cmd_type<<2) | ((cv_addr & 0x300)>>8);
   packets[index + 1] = 0xff & cv_addr;
   packets[index + 2] = cv_data;
   pins_set(&PA7, 0);
-  send_packet(packets, 5);
+  send_packet(packets, num, mode);
+  if (cmd_type == PRG::WRITE) send_packet(packets, num, mode); // write requires 2 same packets
   pins_set(&PA7, 1);
+  // uart_arr("prg", packets, num);
 }
 
 /*
@@ -307,10 +330,12 @@ void extended_accessory(uint16_t addr, uint8_t output) {
  * DDDDDDDD: data of CV
  *
  * cv_addr: 1-1024
+ * mode:     PRG::OPS, PRG::SERVICE
+ * cmd_type: PRG::READ, PRG::WRITE, (not yet supported: PRG::BIT)
+ * addr is ignored if PRG::SERVICE
  */
-void extended_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, uint8_t cv_addr, uint8_t cv_data) {
+void extended_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_Cmd_Type cmd_type, uint8_t cv_addr, uint8_t cv_data) {
   uint8_t packets[5] = {0};
-  uint8_t cc = 0x3; // default write
   uint8_t index = 0;
   uint8_t cmd_start = 0b0111<<4;
 
@@ -322,7 +347,7 @@ void extended_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, uint8_t cv_a
     cmd_start = 0b1110<<4;
   }
 
-  packets[index] = cmd_start | (cc<<2) | ((cv_addr & 0x300)>>8);
+  packets[index] = cmd_start | (cmd_type<<2) | ((cv_addr & 0x300)>>8);
   packets[index + 1] = 0xff & cv_addr;
   packets[index + 2] = cv_data;
   pins_set(&PA7, 0);
@@ -398,6 +423,8 @@ int main(void) {
   uint8_t port_outputs = 0;
   uint8_t fill_with_idle = 0;
   uint8_t is_extended_mode = 0;
+  PRG::Type_Prg_Cmd_Type prg_cmd_type = PRG::READ;
+  PRG::Type_Prg_Mode prg_mode = PRG::SERVICE;
 
   timer_init();
 
@@ -433,6 +460,16 @@ int main(void) {
         DF("extended mode: %s\n", is_extended_mode ? "extended" : "basic");
         cmd_state = CMD_STATE::NONE;
         break;
+      case CMD_STATE::TOGGLE_PRG_CMD_TYPE:
+        prg_cmd_type = prg_cmd_type == PRG::READ ? PRG::WRITE : PRG::READ;
+        DF("prg type: %s\n", prg_cmd_type == PRG::READ ? "read" : "write");
+        cmd_state = CMD_STATE::NONE;
+        break;
+      case CMD_STATE::TOGGLE_PRG_MODE:
+        prg_mode = prg_mode == PRG::OPS ? PRG::SERVICE : PRG::OPS;
+        DF("prg mode: %s\n", prg_mode == PRG::OPS ? "ops" : "service");
+        cmd_state = CMD_STATE::NONE;
+        break;
       case CMD_STATE::RESET:
         {
           // 25 reset packets
@@ -447,12 +484,14 @@ int main(void) {
         break;
       case CMD_STATE::CHANGE:
         {
+          basic_accessory_prg(decoder_addr, prg_mode, prg_cmd_type, 121, 0x05);
+          if (!fill_with_idle) DF("prg cmd: %s - %s\n", prg_mode == PRG::OPS ? "ops" : "service", prg_cmd_type == PRG::READ ? "read" : "write");
           // update cv1 and cv9 in ops mode
           // eg address 267 = 0x10b
-          uint16_t new_addr = 24;
-          basic_accessory_prg(decoder_addr, PRG::OPS, 1, new_addr & 0xff);        // CV1 = decoder address LSB
-          // basic_accessory_prg(decoder_addr, PRG::OPS, 9, (new_addr >> 8) & 0x01); // CV9 = decoder address MSB
-          if (!fill_with_idle) DF("service mode new addr: %u\n", new_addr);
+          // uint16_t new_addr = 24;
+          // basic_accessory_prg(decoder_addr, PRG::OPS, PRG::WRITE, 1, new_addr & 0xff);        // CV1 = decoder address LSB
+          // basic_accessory_prg(decoder_addr, PRG::OPS, PRG::WRITE, 9, (new_addr >> 8) & 0x01); // CV9 = decoder address MSB
+          // if (!fill_with_idle) DF("service mode new addr: %u\n", new_addr);
           cmd_state = CMD_STATE::NONE;
         }
         break;
@@ -462,22 +501,15 @@ int main(void) {
         // handled in ISR
         break;
       case CMD_STATE::SHOW_HELP:
-        DF("usage:\n\
-  %u : send turn left\n\
-  %u : send turn right\n\
-  %u : toggle idle packets in between " WARN("%s")"\n\
-  %u : toogle basic/extended mode " WARN("%s")"\n\
-  %u : 25 reset packets\n\
-  %u : send address change in ops mode\n",
-          CMD_STATE::TURN_LEFT,
-          CMD_STATE::TURN_RIGHT,
-          CMD_STATE::TOGGLE_IDLE,
-          fill_with_idle ? "yes" : "no",
-          CMD_STATE::TOGGLE_EXTENDED,
-          is_extended_mode ? "extended" : "basic",
-          CMD_STATE::RESET,
-          CMD_STATE::CHANGE
-        );
+        DL("usage:");
+        DF("  %u : turn left\n", CMD_STATE::TURN_LEFT);
+        DF("  %u : turn right\n", CMD_STATE::TURN_RIGHT);
+        DF("  %u : " WARN("%s") " idle packets in between (toggle)\n", CMD_STATE::TOGGLE_IDLE, fill_with_idle ? "yes" : "no");
+        DF("  %u : " WARN("%s") " mode (toggle)\n", CMD_STATE::TOGGLE_EXTENDED, is_extended_mode ? "extended" : "basic");
+        DF("  %u : " WARN("%s") " prg type (toggle)\n", CMD_STATE::TOGGLE_PRG_CMD_TYPE, prg_cmd_type == PRG::READ ? "read" : "write");
+        DF("  %u : " WARN("%s") " prg mode (toggle)\n", CMD_STATE::TOGGLE_PRG_MODE, prg_mode == PRG::OPS ? "ops" : "service");
+        DF("  %u : 25 reset packets\n", CMD_STATE::RESET);
+        DF("  %u : prg command\n", CMD_STATE::CHANGE);
         DF("  addr: change command address " WARN("%u/0x%03x") "\n  help: show this help\n", decoder_addr, decoder_addr);
         cmd_state = CMD_STATE::NONE;
         break;
