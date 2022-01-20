@@ -13,20 +13,23 @@
 #include "string.h"
 
 volatile uint8_t done = 0;
-char buff[8];
+char buff[20];
+char uart_data[20];
 volatile uint8_t buff_p = 0;
 namespace CMD_STATE {
   typedef enum {
     NONE,
     TURN_LEFT,
     TURN_RIGHT,
+    CHECK,
     TOGGLE_IDLE,
     TOGGLE_EXTENDED,
     TOGGLE_PRG_CMD_TYPE,
     TOGGLE_PRG_MODE,
     RESET,
-    CHANGE,
     CMD_ADDR_WAITFOR,
+    CMD_CV_WAITFOR,
+    CMD_CV_PROCESS,
     SHOW_HELP,
   } Type_Cmd_State;
 }
@@ -60,12 +63,47 @@ uint8_t get_prev_chars(char *buff, char *data, uint8_t num_of_chars) {
   num_of_chars = num_of_chars > len_buff ? len_buff : num_of_chars;
   uint8_t pos = buff_p;
   for (uint8_t i=0; i<num_of_chars; i++) {
-    uart_rollbefore(&pos, 8);
+    uart_rollbefore(&pos, 20);
     data[num_of_chars-1-i] = buff[pos];
   }
   data[num_of_chars] = '\0';
 
   return num_of_chars;
+}
+
+uint16_t _char2int(char *data_in, uint8_t len) {
+  uint16_t value = 0;
+  uint8_t base = 10;
+  uint8_t start = 0;
+  // if addr_char 0x1234 -> hex
+  if (data_in[1] == 'x') {
+    base = 16;
+    start = 2;
+  }
+  // if addr_char 0b10101 -> binary
+  else if (data_in[1] == 'b') {
+    base = 2;
+    start = 2;
+  }
+  for (uint8_t i=start; i<len; i++) {
+    value = value*base + data_in[i] - '0';
+  }
+
+  return value;
+}
+
+/*
+ * convert char to uint
+ * eg 123, 0x123, 0b001
+ */
+uint16_t buff2int(char *buff) {
+  char data_in[19];
+  uint8_t l = get_prev_chars(buff, data_in, 18);
+  return _char2int(data_in, l);
+}
+
+uint8_t char2int(char *buff) {
+  return _char2int(buff, strlen(buff));
 }
 
 /*
@@ -74,59 +112,58 @@ uint8_t get_prev_chars(char *buff, char *data, uint8_t num_of_chars) {
 ISR(USART0_RXC_vect) {
   uint8_t in = USART0.RXDATAL;
   if (in != '\n') {
-    buff[buff_p] = in;
-    uart_rollover(&buff_p, 8);
+    // backspace
+    if (in == '\r') {
+      uart_rollbefore(&buff_p, 20);
+    }
+    // any key
+    else {
+      buff[buff_p] = in;
+      uart_rollover(&buff_p, 20);
+    }
   }
 
   if (cmd_state == CMD_STATE::NONE) {
     switch (in) {
-      case '1': cmd_state = CMD_STATE::TURN_LEFT; break;
-      case '2': cmd_state = CMD_STATE::TURN_RIGHT; break;
-      case '3': cmd_state = CMD_STATE::TOGGLE_IDLE; break;
-      case '4': cmd_state = CMD_STATE::TOGGLE_EXTENDED; break;
-      case '5': cmd_state = CMD_STATE::TOGGLE_PRG_CMD_TYPE; break;
-      case '6': cmd_state = CMD_STATE::TOGGLE_PRG_MODE; break;
-      case '7': cmd_state = CMD_STATE::RESET; break;
-      case '8': cmd_state = CMD_STATE::CHANGE; break;
+      case '0'+CMD_STATE::TURN_LEFT : cmd_state = CMD_STATE::TURN_LEFT; break;
+      case '0'+CMD_STATE::TURN_RIGHT: cmd_state = CMD_STATE::TURN_RIGHT; break;
+      case '0'+CMD_STATE::CHECK: cmd_state = CMD_STATE::CHECK; break;
+      case '0'+CMD_STATE::TOGGLE_IDLE: cmd_state = CMD_STATE::TOGGLE_IDLE; break;
+      case '0'+CMD_STATE::TOGGLE_EXTENDED: cmd_state = CMD_STATE::TOGGLE_EXTENDED; break;
+      case '0'+CMD_STATE::TOGGLE_PRG_CMD_TYPE: cmd_state = CMD_STATE::TOGGLE_PRG_CMD_TYPE; break;
+      case '0'+CMD_STATE::TOGGLE_PRG_MODE: cmd_state = CMD_STATE::TOGGLE_PRG_MODE; break;
+      case '0'+CMD_STATE::RESET: cmd_state = CMD_STATE::RESET; break;
     }
   }
 
   if (in == '\n') {
     if (cmd_state == CMD_STATE::NONE) {
-      char cmd[5];
-      get_prev_chars(buff, cmd, 4);
-      if (!strcmp(cmd, "addr")) {
+      get_prev_chars(buff, uart_data, 4);
+      if (!strcmp(uart_data, "addr")) {
         cmd_state = CMD_STATE::CMD_ADDR_WAITFOR;
-        D("enter new address...");
+        D("enter new address: ");
       }
-      else if (!strcmp(cmd, "help")) {
+      // 1234[w|r]0b00000000
+      else if (!strcmp(uart_data, "cv")) {
+        cmd_state = CMD_STATE::CMD_CV_WAITFOR;
+        D("enter CV cmd <cv addr>[r|w]<cv value> (eg 121r0x05): ");
+      }
+      else if (!strcmp(uart_data, "help")) {
         cmd_state = CMD_STATE::SHOW_HELP;
       }
     }
 
     else if (cmd_state == CMD_STATE::CMD_ADDR_WAITFOR) {
-      char addr_in[8];
-      uint8_t l = get_prev_chars(buff, addr_in, 7);
-      uint16_t addr = 0;
-      uint8_t base = 10;
-      uint8_t start = 0;
-      // if addr_char 0x1234 -> hex
-      if (addr_in[1] == 'x') {
-        base = 16;
-        start = 2;
-      }
-      // if addr_char 0b10101 -> binary
-      else if (addr_in[1] == 'b') {
-        base = 2;
-        start = 2;
-      }
-      for (uint8_t i=start; i<l; i++) {
-        addr = addr*base + addr_in[i] - '0';
-      }
+      uint16_t addr = buff2int(buff);
       eeprom_update_word(&ee_decoder_addr, addr);
       decoder_addr = addr;
       DF("address in use: %u (0x%04x)\n", decoder_addr, decoder_addr);
       cmd_state = CMD_STATE::NONE;
+    }
+
+    else if (cmd_state == CMD_STATE::CMD_CV_WAITFOR) {
+      get_prev_chars(buff, uart_data, 20);
+      cmd_state = CMD_STATE::CMD_CV_PROCESS;
     }
 
     // clear ring buffer
@@ -482,7 +519,7 @@ int main(void) {
           cmd_state = CMD_STATE::NONE;
         }
         break;
-      case CMD_STATE::CHANGE:
+      case CMD_STATE::CHECK:
         {
           basic_accessory_prg(decoder_addr, prg_mode, prg_cmd_type, 121, 0x05);
           if (!fill_with_idle) DF("prg cmd: %s - %s\n", prg_mode == PRG::OPS ? "ops" : "service", prg_cmd_type == PRG::READ ? "read" : "write");
@@ -498,19 +535,51 @@ int main(void) {
       case CMD_STATE::NONE:
         break;
       case CMD_STATE::CMD_ADDR_WAITFOR:
+      case CMD_STATE::CMD_CV_WAITFOR:
         // handled in ISR
+        break;
+      case CMD_STATE::CMD_CV_PROCESS:
+        {
+          // uart_data = "121r0x05"
+          char cv_addr_char[5] = {0};
+          uint8_t cv_addr_pos = 0;
+          uint8_t rw_seen = 0;
+          char cv_value_char[10] = {0};
+          uint8_t cv_value_pos = 0;
+          PRG::Type_Prg_Cmd_Type cmd_type = PRG::RESERVED;
+          for (uint8_t i=0; i<strlen(uart_data); i++) {
+            if (uart_data[i] == 'r' || uart_data[i] == 'w') {
+              rw_seen = 1;
+              cmd_type = uart_data[i] == 'r' ? PRG::READ : PRG::WRITE;
+            }
+            else if (rw_seen == 0) {
+              cv_addr_char[cv_addr_pos++] = uart_data[i];
+            }
+            else {
+              cv_value_char[cv_value_pos++] = uart_data[i];
+            }
+          }
+
+          uint16_t cv_addr = char2int(cv_addr_char);
+          uint8_t cv_value = char2int(cv_value_char);
+          DF("%s cv#%u: 0x%02x\n", cmd_type == PRG::WRITE ? "write" : "read", cv_addr, cv_value);
+          basic_accessory_prg(decoder_addr, prg_mode, cmd_type, cv_addr, cv_value);
+
+          cmd_state = CMD_STATE::NONE;
+        }
         break;
       case CMD_STATE::SHOW_HELP:
         DL("usage:");
         DF("  %u : turn left\n", CMD_STATE::TURN_LEFT);
         DF("  %u : turn right\n", CMD_STATE::TURN_RIGHT);
+        DF("  %u : check cv\n", CMD_STATE::CHECK);
         DF("  %u : " WARN("%s") " idle packets in between (toggle)\n", CMD_STATE::TOGGLE_IDLE, fill_with_idle ? "yes" : "no");
         DF("  %u : " WARN("%s") " mode (toggle)\n", CMD_STATE::TOGGLE_EXTENDED, is_extended_mode ? "extended" : "basic");
         DF("  %u : " WARN("%s") " prg type (toggle)\n", CMD_STATE::TOGGLE_PRG_CMD_TYPE, prg_cmd_type == PRG::READ ? "read" : "write");
         DF("  %u : " WARN("%s") " prg mode (toggle)\n", CMD_STATE::TOGGLE_PRG_MODE, prg_mode == PRG::OPS ? "ops" : "service");
         DF("  %u : 25 reset packets\n", CMD_STATE::RESET);
-        DF("  %u : prg command\n", CMD_STATE::CHANGE);
-        DF("  addr: change command address " WARN("%u/0x%03x") "\n  help: show this help\n", decoder_addr, decoder_addr);
+        DF("  addr: change address " WARN("%u/0x%03x") "\n  help: show this help\n", decoder_addr, decoder_addr);
+        DL("  cv  : read/write cv");
         cmd_state = CMD_STATE::NONE;
         break;
     }

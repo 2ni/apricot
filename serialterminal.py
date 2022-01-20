@@ -63,9 +63,10 @@ def on_press(key):
     except AttributeError:
         try:
             k = key.name  # other keys
-            # print("other: " + k)
             if k == "enter":
                 client.write("\n".encode())
+            elif k == "backspace":
+                client.write("\r".encode())
         except:
             pass
 
