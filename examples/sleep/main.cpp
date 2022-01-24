@@ -21,9 +21,17 @@ int main(void) {
   /*
   PORTA.DIRCLR = PIN1_bm;
   set_sleep_mode(SLEEP_MODE_STANDBY);
+  clock.stop(); // disable interrupts from rtc
   sleep_enable();
   sleep_cpu();
   DL("sleep");
+  */
+
+  /*
+  DL("go to sleep");
+  while(uart_is_busy());
+  clock.stop();
+  __asm__ __volatile__ ( "sleep" "\n\t" :: );
   */
 
   PORTB.DIRSET = PIN5_bm; // set PB5 (led) as output

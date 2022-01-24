@@ -55,6 +55,7 @@ void     uart_tuple(const char* key, const char* value);
 void     uart_tuple(const char* key, uint16_t value, uint8_t base=10);
 void     uart_tuple(const char* key, char* value);
 void     uart_send_char(unsigned char c);
+uint8_t  uart_is_busy();
 void     uart_send_string(char* s);
 void     uart_send_string_p(const char* s);
 void     uart_send_digit(uint16_t value, uint8_t base=10);
