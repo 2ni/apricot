@@ -197,10 +197,12 @@ ISR(USART0_RXC_vect) {
 /*
  * timer timeout
  */
+/*
 ISR(TCA0_OVF_vect) {
   done = 1;
   TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
 }
+*/
 
 
 void timer_init() {
@@ -471,6 +473,110 @@ void print_outputs(uint8_t port_outputs) {
   DF("outputs: %s\n", buf);
 }
 
+// 6 packets, 20bits preamble = 68bits
+// 0=long (116us) , 1=short (58us)
+// we create a bit buffer with size: BUFF_SIZE_BYTES * 8
+#define BUFF_SIZE_BYTES 2
+uint8_t buffer[BUFF_SIZE_BYTES] = {0};
+uint16_t buff_pos_in = 0;
+volatile uint16_t buff_pos_out = 0; // max 20*8
+volatile uint8_t is_short = 0;
+volatile uint8_t edgecount = 0;
+
+uint8_t buff_get_next_bit() {
+  return (buffer[buff_pos_out/8] & (1<<(7-(buff_pos_out%8)))) ? 1 : 0;
+}
+
+uint8_t inc_rollover(volatile uint16_t *value, uint16_t max, uint8_t increment = 1) {
+  uint16_t new_value = *value + increment;
+  uint8_t overflow = new_value >= max;
+  *value = overflow ? new_value - max : new_value;
+  return overflow;
+}
+
+uint8_t inc_rollover(uint16_t *value, uint16_t max, uint8_t increment = 1) {
+  uint16_t new_value = *value + increment;
+  uint8_t overflow = new_value >= max;
+  *value = overflow ? new_value - max : new_value;
+  return overflow;
+}
+
+void buff_add_bit(uint8_t bit) {
+  uint8_t v = 1<<(7-(buff_pos_in%8));
+  if (bit) {
+    buffer[buff_pos_in/8] |= v;
+  } else {
+    buffer[buff_pos_in/8] &= ~v;
+  }
+  uint16_t next = buff_pos_in;
+  inc_rollover(&next, BUFF_SIZE_BYTES*8);
+  // wait for free space
+  uint8_t warned = 1;
+  while (next == buff_pos_out) {
+    if (!warned) {
+      warned = 1;
+      DL("waiting for space in buffer");
+    }
+  }
+
+  buff_pos_in = next;
+}
+
+void buff_add_byte(uint8_t value) {
+  // wait for free space
+  uint16_t next = buff_pos_in;
+  uint8_t overflow = inc_rollover(&next, BUFF_SIZE_BYTES*8, 8);
+  // wait for free space in buffer (byte)
+  uint8_t warned = 0;
+  while (overflow && (next >= buff_pos_out)) {
+    if (!warned) {
+      warned = 1;
+      DL("waiting for space in buffer");
+    }
+  }
+
+  uint16_t cur_buff_byte = buff_pos_in/8;
+  uint8_t buff_pos_in_byte = buff_pos_in%8;
+  buffer[cur_buff_byte] &= ~(0xff>>buff_pos_in_byte);
+  buffer[cur_buff_byte] |= value>>buff_pos_in_byte;
+  if (buff_pos_in_byte) {
+    inc_rollover(&cur_buff_byte, BUFF_SIZE_BYTES);
+    buffer[cur_buff_byte] &= ~((0xff>>(8-buff_pos_in_byte))<<(8-buff_pos_in_byte));
+    buffer[cur_buff_byte] |= (value & (0xff>>(8-buff_pos_in_byte)))<<(8-buff_pos_in_byte);
+  }
+  inc_rollover(&buff_pos_in, BUFF_SIZE_BYTES*8, 8);
+}
+
+ISR(TCA0_OVF_vect) {
+  TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
+
+  // no data to send
+  if (buff_pos_in == buff_pos_out) {
+    pins_output(&PA7, 1);
+    edgecount = 0;
+    return;
+  }
+
+  // signal start
+  if (edgecount == 0) {
+    is_short = buff_get_next_bit();
+  }
+  // signal done
+  else if ((is_short && edgecount == 2) || (!is_short && edgecount == 4)) {
+    // get next bit within it buffer is 0 1 2 3 4 5 6 7 8 9...
+    //                                 |    buff[0]    | buff[1]...
+    is_short = buff_get_next_bit();
+    inc_rollover(&buff_pos_out, BUFF_SIZE_BYTES*8);
+    edgecount = 0;
+  }
+
+  if (edgecount == 0 || (is_short && edgecount == 1) || ( !is_short && edgecount == 2)) {
+    pins_toggle(&PA7);
+  }
+
+  edgecount++;
+}
+
 int main(void) {
   mcu_init(1);
 
@@ -486,6 +592,34 @@ int main(void) {
 
   pins_output(&PA7, 1);
   pins_set(&PA7, 0);
+
+  uint16_t x = 0;
+  uint8_t y = 0;
+
+
+  TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
+  TCA0.SINGLE.INTCTRL = TCA_SINGLE_OVF_bm;
+  TCA0.SINGLE.CTRLA = TCA_SINGLE_ENABLE_bm | TCA_SINGLE_CLKSEL_DIV1_gc;
+  TCA0.SINGLE.PER = 580;
+  TCA0.SINGLE.CNT = 0;
+
+  buff_add_byte(0xff);
+  buff_add_bit(1);
+  buff_add_bit(1);
+  buff_add_byte(0x00);
+  uart_arr("buff final", buffer, 2);
+  DF("buff_pos_in: %u\n", buff_pos_in);
+
+  while (1);
+  buffer[0] = 0b11101;
+  buff_pos_in = 6;
+  buffer[0] <<= 3;
+  while (1) {
+    _delay_ms(1000);
+    x++;
+    y = x / 8;
+    DF("y: %u\n", y);
+  }
 
   uint8_t port_outputs = 0;
   uint8_t fill_with_idle = 0;
