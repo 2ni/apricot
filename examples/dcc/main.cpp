@@ -53,11 +53,138 @@ namespace PRG {
   } Type_Prg_Cmd_Type;
 }
 
+// predefine idle_packet
+const uint8_t idle_packet[5] = { 0xff, 0xf7, 0xf8, 0x01, 0xff };
 
 pins_t R = PB6; // also control output
 pins_t L = PB7;
 uint16_t EEMEM ee_decoder_addr;
 volatile uint16_t decoder_addr;
+
+// 6 packets, 20bits preamble = 68bits
+// 0=long (116us) , 1=short (58us)
+// we create a bit buffer of uint8_t's with size: BUFF_SIZE_BYTES * 8
+#define BUFF_SIZE_BYTES 20
+uint8_t buffer[BUFF_SIZE_BYTES] = {0};
+uint16_t buff_pos_in = 0;
+volatile uint16_t buff_pos_out = 0; // max 20*8
+volatile uint8_t is_short = 0;
+volatile uint8_t edgecount = 0;
+
+/*
+ * get current bit buffer to send out
+ * (pointer buff_pos_out)
+ */
+uint8_t buff_get_current_bit() {
+  return (buffer[buff_pos_out/8] & (1<<(7-(buff_pos_out%8)))) ? 1 : 0;
+}
+
+/*
+ * increment value and rollover if equals max
+ */
+uint8_t inc_rollover(volatile uint16_t *value, uint16_t max, uint8_t increment = 1) {
+  uint16_t new_value = *value + increment;
+  uint8_t overflow = new_value >= max;
+  *value = overflow ? new_value - max : new_value;
+  return overflow;
+}
+
+uint8_t inc_rollover(uint16_t *value, uint16_t max, uint8_t increment = 1) {
+  uint16_t new_value = *value + increment;
+  uint8_t overflow = new_value >= max;
+  *value = overflow ? new_value - max : new_value;
+  return overflow;
+}
+
+/*
+ * add bit to transmission buffer
+ * (buff_add_bit)
+ */
+void send_bit(uint8_t bit) {
+  uint8_t v = 1<<(7-(buff_pos_in%8));
+  if (bit) {
+    buffer[buff_pos_in/8] |= v;
+  } else {
+    buffer[buff_pos_in/8] &= ~v;
+  }
+  uint16_t next = buff_pos_in;
+  inc_rollover(&next, BUFF_SIZE_BYTES*8);
+  // wait for free space
+  uint8_t warned = 1;
+  while (next == buff_pos_out) {
+    if (!warned) {
+      warned = 1;
+      DL("waiting for space in buffer");
+    }
+  }
+
+  buff_pos_in = next;
+}
+
+/*
+ * add byte to transmission buffer
+ * (buff_add_byte)
+ */
+void send_byte(uint8_t value) {
+  uint16_t next = buff_pos_in;
+  uint8_t overflow = inc_rollover(&next, BUFF_SIZE_BYTES*8, 8);
+  // wait for free space in buffer (byte)
+  uint8_t warned = 0;
+  while (overflow && (next >= buff_pos_out)) {
+    if (!warned) {
+      warned = 1;
+      DL("waiting for space in buffer");
+    }
+  }
+
+  uint16_t cur_buff_byte = buff_pos_in/8;
+  uint8_t buff_pos_in_byte = buff_pos_in%8;
+  buffer[cur_buff_byte] &= ~(0xff>>buff_pos_in_byte);
+  buffer[cur_buff_byte] |= value>>buff_pos_in_byte;
+  if (buff_pos_in_byte) {
+    inc_rollover(&cur_buff_byte, BUFF_SIZE_BYTES);
+    buffer[cur_buff_byte] &= ~((0xff>>(8-buff_pos_in_byte))<<(8-buff_pos_in_byte));
+    buffer[cur_buff_byte] |= (value & (0xff>>(8-buff_pos_in_byte)))<<(8-buff_pos_in_byte);
+  }
+  inc_rollover(&buff_pos_in, BUFF_SIZE_BYTES*8, 8);
+}
+
+/*
+ * interrupt set to 58us
+ * handle 1=58us and 0=116us bit signals from our buffer
+ */
+ISR(TCA0_OVF_vect) {
+  TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
+
+  // no data to send
+  if (buff_pos_in == buff_pos_out) {
+    pins_set(&R, 1);
+    pins_set(&L, 0);
+    edgecount = 0;
+    return;
+  }
+
+  // let's toggle as fast as possible in isr
+  if (edgecount == 0 || is_short || (!is_short && (edgecount == 2 || edgecount == 4))) {
+    pins_toggle(&R);
+    pins_toggle(&L);
+  }
+
+  // signal start
+  if (edgecount == 0) {
+    is_short = buff_get_current_bit();
+  }
+
+  edgecount++;
+
+  // signal done
+  if ((is_short && edgecount == 2) || (!is_short && edgecount == 4)) {
+    // get next bit within it buffer is 0 1 2 3 4 5 6 7 8 9...
+    //                                 |    buff[0]    | buff[1]...
+    inc_rollover(&buff_pos_out, BUFF_SIZE_BYTES*8);
+    edgecount = 0;
+  }
+}
 
 /*
  * get <num_of_chars> chars before current pointer of ring buffer
@@ -194,44 +321,12 @@ ISR(USART0_RXC_vect) {
   }
 }
 
-/*
- * timer timeout
- */
-/*
-ISR(TCA0_OVF_vect) {
-  done = 1;
-  TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
-}
-*/
-
-
 void timer_init() {
+  TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
   TCA0.SINGLE.INTCTRL = TCA_SINGLE_OVF_bm;
-}
-
-void send_bit(uint8_t length) {
   TCA0.SINGLE.CTRLA = TCA_SINGLE_ENABLE_bm | TCA_SINGLE_CLKSEL_DIV1_gc;
-  pins_set(&R, 1);
-  pins_set(&L, 0);
-  done = 0;
-  TCA0.SINGLE.PER = length ? 285 : 850; // 10MHz*58us = 580
+  TCA0.SINGLE.PER = 580;
   TCA0.SINGLE.CNT = 0;
-  while (!done); // wait for interrupt
-  pins_set(&R, 0);
-  pins_set(&L, 1);
-  done = 0;
-  TCA0.SINGLE.PER = length ? 395 : 980;
-  TCA0.SINGLE.CNT = 0;
-  while (!done); // wait for interrupt
-  pins_set(&R, 1);
-  pins_set(&L, 1);
-  TCA0.SINGLE.CTRLA = 0;
-}
-
-void send_byte(uint8_t data) {
-  for (uint8_t c=0; c<8; c++) {
-    send_bit(data & (1<<(7-c)));
-  }
 }
 
 /*
@@ -459,11 +554,19 @@ void bitwise(char *buf, uint8_t value) {
   }
 }
 
-void idle_packet() {
-  uint8_t packets[2];
-  packets[0] = 0xff;
-  packets[1] = 0x00;
-  send_packet(packets, 2); // idle packet
+/*
+ * make idle packet sending faster
+ * {preamble} 0 0xff 0 0x00 0 0xff 1
+ * ~180us to save into buffer
+ */
+void send_idle_packet() {
+  pins_set(&PA7, 0);
+  send_byte(idle_packet[0]);
+  send_byte(idle_packet[1]);
+  send_byte(idle_packet[2]);
+  send_byte(idle_packet[3]);
+  send_byte(idle_packet[4]);
+  pins_set(&PA7, 1);
 }
 
 void print_outputs(uint8_t port_outputs) {
@@ -473,113 +576,8 @@ void print_outputs(uint8_t port_outputs) {
   DF("outputs: %s\n", buf);
 }
 
-// 6 packets, 20bits preamble = 68bits
-// 0=long (116us) , 1=short (58us)
-// we create a bit buffer with size: BUFF_SIZE_BYTES * 8
-#define BUFF_SIZE_BYTES 2
-uint8_t buffer[BUFF_SIZE_BYTES] = {0};
-uint16_t buff_pos_in = 0;
-volatile uint16_t buff_pos_out = 0; // max 20*8
-volatile uint8_t is_short = 0;
-volatile uint8_t edgecount = 0;
-
-uint8_t buff_get_next_bit() {
-  return (buffer[buff_pos_out/8] & (1<<(7-(buff_pos_out%8)))) ? 1 : 0;
-}
-
-uint8_t inc_rollover(volatile uint16_t *value, uint16_t max, uint8_t increment = 1) {
-  uint16_t new_value = *value + increment;
-  uint8_t overflow = new_value >= max;
-  *value = overflow ? new_value - max : new_value;
-  return overflow;
-}
-
-uint8_t inc_rollover(uint16_t *value, uint16_t max, uint8_t increment = 1) {
-  uint16_t new_value = *value + increment;
-  uint8_t overflow = new_value >= max;
-  *value = overflow ? new_value - max : new_value;
-  return overflow;
-}
-
-void buff_add_bit(uint8_t bit) {
-  uint8_t v = 1<<(7-(buff_pos_in%8));
-  if (bit) {
-    buffer[buff_pos_in/8] |= v;
-  } else {
-    buffer[buff_pos_in/8] &= ~v;
-  }
-  uint16_t next = buff_pos_in;
-  inc_rollover(&next, BUFF_SIZE_BYTES*8);
-  // wait for free space
-  uint8_t warned = 1;
-  while (next == buff_pos_out) {
-    if (!warned) {
-      warned = 1;
-      DL("waiting for space in buffer");
-    }
-  }
-
-  buff_pos_in = next;
-}
-
-void buff_add_byte(uint8_t value) {
-  // wait for free space
-  uint16_t next = buff_pos_in;
-  uint8_t overflow = inc_rollover(&next, BUFF_SIZE_BYTES*8, 8);
-  // wait for free space in buffer (byte)
-  uint8_t warned = 0;
-  while (overflow && (next >= buff_pos_out)) {
-    if (!warned) {
-      warned = 1;
-      DL("waiting for space in buffer");
-    }
-  }
-
-  uint16_t cur_buff_byte = buff_pos_in/8;
-  uint8_t buff_pos_in_byte = buff_pos_in%8;
-  buffer[cur_buff_byte] &= ~(0xff>>buff_pos_in_byte);
-  buffer[cur_buff_byte] |= value>>buff_pos_in_byte;
-  if (buff_pos_in_byte) {
-    inc_rollover(&cur_buff_byte, BUFF_SIZE_BYTES);
-    buffer[cur_buff_byte] &= ~((0xff>>(8-buff_pos_in_byte))<<(8-buff_pos_in_byte));
-    buffer[cur_buff_byte] |= (value & (0xff>>(8-buff_pos_in_byte)))<<(8-buff_pos_in_byte);
-  }
-  inc_rollover(&buff_pos_in, BUFF_SIZE_BYTES*8, 8);
-}
-
-ISR(TCA0_OVF_vect) {
-  TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
-
-  // no data to send
-  if (buff_pos_in == buff_pos_out) {
-    pins_output(&PA7, 1);
-    edgecount = 0;
-    return;
-  }
-
-  // signal start
-  if (edgecount == 0) {
-    is_short = buff_get_next_bit();
-  }
-  // signal done
-  else if ((is_short && edgecount == 2) || (!is_short && edgecount == 4)) {
-    // get next bit within it buffer is 0 1 2 3 4 5 6 7 8 9...
-    //                                 |    buff[0]    | buff[1]...
-    is_short = buff_get_next_bit();
-    inc_rollover(&buff_pos_out, BUFF_SIZE_BYTES*8);
-    edgecount = 0;
-  }
-
-  if (edgecount == 0 || (is_short && edgecount == 1) || ( !is_short && edgecount == 2)) {
-    pins_toggle(&PA7);
-  }
-
-  edgecount++;
-}
-
 int main(void) {
   mcu_init(1);
-
 
   decoder_addr = eeprom_read_word(&ee_decoder_addr);
   if (decoder_addr == 0xffff) decoder_addr = 0x05; // default 267=0x10b
@@ -591,35 +589,7 @@ int main(void) {
   pins_set(&L, 0);
 
   pins_output(&PA7, 1);
-  pins_set(&PA7, 0);
-
-  uint16_t x = 0;
-  uint8_t y = 0;
-
-
-  TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
-  TCA0.SINGLE.INTCTRL = TCA_SINGLE_OVF_bm;
-  TCA0.SINGLE.CTRLA = TCA_SINGLE_ENABLE_bm | TCA_SINGLE_CLKSEL_DIV1_gc;
-  TCA0.SINGLE.PER = 580;
-  TCA0.SINGLE.CNT = 0;
-
-  buff_add_byte(0xff);
-  buff_add_bit(1);
-  buff_add_bit(1);
-  buff_add_byte(0x00);
-  uart_arr("buff final", buffer, 2);
-  DF("buff_pos_in: %u\n", buff_pos_in);
-
-  while (1);
-  buffer[0] = 0b11101;
-  buff_pos_in = 6;
-  buffer[0] <<= 3;
-  while (1) {
-    _delay_ms(1000);
-    x++;
-    y = x / 8;
-    DF("y: %u\n", y);
-  }
+  pins_set(&PA7, 1);
 
   uint8_t port_outputs = 0;
   uint8_t fill_with_idle = 0;
@@ -628,6 +598,28 @@ int main(void) {
   PRG::Type_Prg_Mode prg_mode = PRG::SERVICE;
 
   timer_init();
+
+  // DBG START
+  /*
+  _delay_ms(10);
+  send_idle_packet();
+  while(1);
+
+  send_bit(0);
+  send_bit(1);
+  send_byte(0xff);
+  uart_arr("buff final", buffer, 2);
+  DF("buff_pos_in: %u\n", buff_pos_in);
+  while (1);
+
+  buffer[0] = 0b11101;
+  buff_pos_in = 5;
+  buffer[0] <<= 3;
+  uart_arr("buff final", buffer, 2);
+  DF("buff_pos_in: %u\n", buff_pos_in);
+  while (1);
+  */
+  // DBG END
 
   while  (1) {
     switch (cmd_state) {
@@ -789,7 +781,7 @@ int main(void) {
     }
 
     if (fill_with_idle) {
-      idle_packet();
+      send_idle_packet();
     }
   }
 }
