@@ -68,7 +68,7 @@ volatile uint16_t decoder_addr;
 uint8_t buffer[BUFF_SIZE_BYTES] = {0};
 uint16_t buff_pos_in = 0;
 volatile uint16_t buff_pos_out = 0; // max 20*8
-volatile uint8_t is_short = 0;
+volatile uint8_t current_bit = 0;
 volatile uint8_t edgecount = 0;
 
 /*
@@ -165,20 +165,20 @@ ISR(TCA0_OVF_vect) {
   }
 
   // let's toggle as fast as possible in isr
-  if (edgecount == 0 || is_short || (!is_short && (edgecount == 2 || edgecount == 4))) {
+  if (edgecount == 0 || current_bit == 1 || (current_bit == 0 && (edgecount == 2 || edgecount == 4))) {
     pins_toggle(&R);
     pins_toggle(&L);
   }
 
   // signal start
   if (edgecount == 0) {
-    is_short = buff_get_current_bit();
+    current_bit = buff_get_current_bit();
   }
 
   edgecount++;
 
   // signal done
-  if ((is_short && edgecount == 2) || (!is_short && edgecount == 4)) {
+  if ((current_bit == 1 && edgecount == 2) || (current_bit == 0 && edgecount == 4)) {
     // get next bit within it buffer is 0 1 2 3 4 5 6 7 8 9...
     //                                 |    buff[0]    | buff[1]...
     inc_rollover(&buff_pos_out, BUFF_SIZE_BYTES*8);
