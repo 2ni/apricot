@@ -21,7 +21,6 @@ namespace CMD_STATE {
     NONE,
     TURN_LEFT,
     TURN_RIGHT,
-    CHECK,
     TOGGLE_IDLE,
     TOGGLE_EXTENDED,
     TOGGLE_PRG_CMD_TYPE,
@@ -37,7 +36,7 @@ namespace CMD_STATE {
     SHOW_HELP,
   } Type_Cmd_State;
 }
-CMD_STATE::Type_Cmd_State cmd_state = CMD_STATE::SHOW_HELP;
+volatile CMD_STATE::Type_Cmd_State cmd_state = CMD_STATE::SHOW_HELP;
 
 namespace PRG {
   typedef enum {
@@ -53,18 +52,22 @@ namespace PRG {
   } Type_Prg_Cmd_Type;
 }
 
-// predefine idle_packet
-const uint8_t idle_packet[5] = { 0xff, 0xf7, 0xf8, 0x01, 0xff };
+// predefine idle_packets
+#define IDLE_PACKETS_SIZE_BYTES 5
+uint8_t idle_packets[IDLE_PACKETS_SIZE_BYTES] = { 0xff, 0xf7, 0xf8, 0x01, 0xff };
+uint8_t fill_with_idle = 0;
+volatile int8_t idle_packets_p = -1;
 
 pins_t R = PB6; // also control output
 pins_t L = PB7;
+volatile uint8_t output = 0;
 uint16_t EEMEM ee_decoder_addr;
 volatile uint16_t decoder_addr;
 
 // 6 packets, 20bits preamble = 68bits
 // 0=long (116us) , 1=short (58us)
 // we create a bit buffer of uint8_t's with size: BUFF_SIZE_BYTES * 8
-#define BUFF_SIZE_BYTES 20
+#define BUFF_SIZE_BYTES 200
 uint8_t buffer[BUFF_SIZE_BYTES] = {0};
 uint16_t buff_pos_in = 0;
 volatile uint16_t buff_pos_out = 0; // max 20*8
@@ -75,8 +78,8 @@ volatile uint8_t edgecount = 0;
  * get current bit buffer to send out
  * (pointer buff_pos_out)
  */
-uint8_t buff_get_current_bit() {
-  return (buffer[buff_pos_out/8] & (1<<(7-(buff_pos_out%8)))) ? 1 : 0;
+uint8_t buff_get_current_bit(uint8_t *b, uint16_t p) {
+  return (b[p/8] & (1<<(7-(p%8)))) ? 1 : 0;
 }
 
 /*
@@ -100,45 +103,56 @@ uint8_t inc_rollover(uint16_t *value, uint16_t max, uint8_t increment = 1) {
  * add bit to transmission buffer
  * (buff_add_bit)
  */
-void send_bit(uint8_t bit) {
-  uint8_t v = 1<<(7-(buff_pos_in%8));
+uint16_t send_bit(uint8_t bit, uint16_t buff_pos_start = 65535) {
+  uint8_t bp = buff_pos_start != 65535;
+  uint16_t buff_pos = bp ? buff_pos_start : buff_pos_in;
+
+  uint8_t v = 1<<(7-(buff_pos%8));
   if (bit) {
-    buffer[buff_pos_in/8] |= v;
+    buffer[buff_pos/8] |= v;
   } else {
-    buffer[buff_pos_in/8] &= ~v;
+    buffer[buff_pos/8] &= ~v;
   }
-  uint16_t next = buff_pos_in;
+  uint16_t next = buff_pos;
   inc_rollover(&next, BUFF_SIZE_BYTES*8);
   // wait for free space
-  uint8_t warned = 1;
+  // while (next == buff_pos_out);
+
+  uint8_t warned = 0;
   while (next == buff_pos_out) {
     if (!warned) {
       warned = 1;
-      DL("waiting for space in buffer");
+      DL("buf ofv");
     }
   }
 
-  buff_pos_in = next;
+  if (!bp) buff_pos_in = next;
+
+  return next;
 }
 
 /*
  * add byte to transmission buffer
  * (buff_add_byte)
  */
-void send_byte(uint8_t value) {
-  uint16_t next = buff_pos_in;
+uint16_t send_byte(uint8_t value, uint16_t buff_pos_start = 65535) {
+  uint8_t bp = buff_pos_start != 65535;
+  uint16_t buff_pos = bp ? buff_pos_start : buff_pos_in;
+  uint16_t next = buff_pos;
   uint8_t overflow = inc_rollover(&next, BUFF_SIZE_BYTES*8, 8);
   // wait for free space in buffer (byte)
+  // while (overflow && (next >= buff_pos_out));
+
   uint8_t warned = 0;
   while (overflow && (next >= buff_pos_out)) {
     if (!warned) {
       warned = 1;
-      DL("waiting for space in buffer");
+      DL("buf ofv");
     }
   }
 
-  uint16_t cur_buff_byte = buff_pos_in/8;
-  uint8_t buff_pos_in_byte = buff_pos_in%8;
+  uint16_t cur_buff_byte = buff_pos/8;
+  uint8_t buff_pos_in_byte = buff_pos%8;
   buffer[cur_buff_byte] &= ~(0xff>>buff_pos_in_byte);
   buffer[cur_buff_byte] |= value>>buff_pos_in_byte;
   if (buff_pos_in_byte) {
@@ -146,7 +160,11 @@ void send_byte(uint8_t value) {
     buffer[cur_buff_byte] &= ~((0xff>>(8-buff_pos_in_byte))<<(8-buff_pos_in_byte));
     buffer[cur_buff_byte] |= (value & (0xff>>(8-buff_pos_in_byte)))<<(8-buff_pos_in_byte);
   }
-  inc_rollover(&buff_pos_in, BUFF_SIZE_BYTES*8, 8);
+  inc_rollover(&buff_pos, BUFF_SIZE_BYTES*8, 8);
+
+  if (!bp) buff_pos_in = buff_pos;
+
+  return buff_pos;
 }
 
 /*
@@ -157,22 +175,39 @@ ISR(TCA0_OVF_vect) {
   TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
 
   // no data to send
-  if (buff_pos_in == buff_pos_out) {
-    pins_set(&R, 1);
-    pins_set(&L, 0);
+  if (!fill_with_idle && buff_pos_in == buff_pos_out) {
+    PORTB.OUT |= PIN6_bm | PIN7_bm; // PB6=PB7=1
     edgecount = 0;
     return;
   }
 
   // let's toggle as fast as possible in isr
   if (edgecount == 0 || current_bit == 1 || (current_bit == 0 && (edgecount == 2 || edgecount == 4))) {
-    pins_toggle(&R);
-    pins_toggle(&L);
+    uint8_t portvalues = PORTB.IN;
+    // clear bit 7, copy pin 6 to 7, then toggle pin 6
+    portvalues = (portvalues & ~PIN7_bm) | ((portvalues & PIN6_bm)>>PIN6_bp<<PIN7_bp);
+    portvalues ^= PIN6_bm;
+    PORTB.OUT = portvalues;
   }
 
   // signal start
   if (edgecount == 0) {
-    current_bit = buff_get_current_bit();
+    uint8_t has_data = (buff_pos_in != buff_pos_out);
+    // activate sending idle packets
+    if (!has_data && idle_packets_p == -1) {
+      idle_packets_p = 0;
+    }
+    // inactivate sending idle packets
+    else if (has_data && idle_packets_p == 0) {
+      idle_packets_p = -1;
+    }
+
+    // get next bit (from available data buffer or idle buffer)
+    if (idle_packets_p == -1) {
+      current_bit = buff_get_current_bit(buffer, buff_pos_out);
+    } else {
+      current_bit = buff_get_current_bit(idle_packets, idle_packets_p);
+    }
   }
 
   edgecount++;
@@ -181,7 +216,12 @@ ISR(TCA0_OVF_vect) {
   if ((current_bit == 1 && edgecount == 2) || (current_bit == 0 && edgecount == 4)) {
     // get next bit within it buffer is 0 1 2 3 4 5 6 7 8 9...
     //                                 |    buff[0]    | buff[1]...
-    inc_rollover(&buff_pos_out, BUFF_SIZE_BYTES*8);
+    if (idle_packets_p == -1) {
+      inc_rollover(&buff_pos_out, BUFF_SIZE_BYTES*8);
+    }
+    else {
+      idle_packets_p = ++idle_packets_p >= (IDLE_PACKETS_SIZE_BYTES*8) ? 0 : idle_packets_p; // make faster than inc_rollover(&idle_packets_p, 40);
+    }
     edgecount = 0;
   }
 }
@@ -258,7 +298,6 @@ ISR(USART0_RXC_vect) {
     switch (in) {
       case '0'+CMD_STATE::TURN_LEFT : cmd_state = CMD_STATE::TURN_LEFT; break;
       case '0'+CMD_STATE::TURN_RIGHT: cmd_state = CMD_STATE::TURN_RIGHT; break;
-      case '0'+CMD_STATE::CHECK: cmd_state = CMD_STATE::CHECK; break;
       case '0'+CMD_STATE::TOGGLE_IDLE: cmd_state = CMD_STATE::TOGGLE_IDLE; break;
       case '0'+CMD_STATE::TOGGLE_EXTENDED: cmd_state = CMD_STATE::TOGGLE_EXTENDED; break;
       case '0'+CMD_STATE::TOGGLE_PRG_CMD_TYPE: cmd_state = CMD_STATE::TOGGLE_PRG_CMD_TYPE; break;
@@ -359,21 +398,28 @@ void timer_init() {
  * we only support 3bytes (addr, data, xor)
  */
 void send_packet(uint8_t *packets, uint8_t len, PRG::Type_Prg_Mode mode = PRG::OPS) {
-  // preamble
-  for (uint8_t c=0; c<(mode == PRG::OPS ? 12 : 20); c++) send_bit(1);
+  // we "activate" the new buffer entries only at the end
+  uint16_t p;
+
+  // preamble (ops: 12bits, service: 20bits)
+  p = send_byte(0xff, buff_pos_in);
+  if (mode == PRG::SERVICE) p = send_byte(0xff, p);
+  for (uint8_t c=0; c<4; c++) p = send_bit(1, p);
 
   // data
   uint8_t x = 0;
   for (uint8_t c=0; c<len; c++) {
-    send_bit(0);
-    send_byte(packets[c]);
+    p = send_bit(0, p);
+    p = send_byte(packets[c], p);
     x ^= packets[c];
   }
-  send_bit(0);
-  send_byte(x);
-  send_bit(1);
-  pins_set(&R, 1);
-  pins_set(&L, 1);
+  p = send_bit(0, p);
+  p = send_byte(x, p);
+  p = send_bit(1, p);
+
+  // activate new buffer entries
+  buff_pos_in = p;
+
   // uart_arr("packets", packets, len);
   // DF("xor: 0x%02x\n", x);
   // DF("a: 0x%02x, d: 0x%02x, c: 0x%02x\n", addr, data, addr^data);
@@ -409,9 +455,7 @@ void basic_accessory(uint16_t addr, uint8_t activation, uint8_t output, uint8_t 
 
   packets[0] = 0x80 | (module_addr & 0x3f);
   packets[1] = 0x80 | ((~module_addr & 0x1c0)>>2) | (((port - 1) & 0x03)<<1) | (activation ? 0x01<<3 : 0) | (output ? 0x01 : 0);
-  pins_set(&PA7, 0);
   send_packet(packets, 2);
-  pins_set(&PA7, 1);
   // uart_arr("packets", packets, 2);
 }
 
@@ -437,14 +481,14 @@ void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_C
   uint8_t num = 3;
   uint8_t cmd_start = 0b0111<<4; // service
 
-  // send reset packets 1st (only in service mode for before 1st packet)
+  // send reset packets 1st (only in service mode before 1st packet)
   if (mode == PRG::SERVICE && !skip_resets) {
     for (uint8_t c=0; c<25; c++) {
       send_packet(packets, 2);
     }
   }
 
-  cv_addr -= 1; // input: 1-1024
+  // add address packets
   split_addr(addr, &module_addr, &port, is_roco);
   if (mode == PRG::OPS) {
     packets[0] = 0x80 | (module_addr & 0x3f);
@@ -454,14 +498,13 @@ void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_C
     cmd_start = 0b1110<<4;
   }
 
+  cv_addr -= 1; // input: 1-1024
   packets[index] = cmd_start | (cmd_type<<2) | ((cv_addr & 0x300)>>8);
   packets[index+1] = 0xff & cv_addr;
   packets[index+2] = cv_data;
-  pins_set(&PA7, 0);
   send_packet(packets, num, mode);
   // write requires 2 similar packets while in ops mode (in real env)
   if (mode == PRG::OPS && cmd_type == PRG::WRITE) send_packet(packets, num, mode);
-  pins_set(&PA7, 1);
   // uart_arr("prg", packets, num);
 }
 
@@ -479,9 +522,7 @@ void extended_accessory(uint16_t addr, uint8_t output) {
   packets[0] = 0x80 | ((addr & 0xfc)>>2);
   packets[1] = 0x01 | ((~addr & 0x700)>>4) | ((addr & 0x03)<<1);
   packets[2] = output;
-  pins_set(&PA7, 0);
   send_packet(packets, 3);
-  pins_set(&PA7, 1);
 }
 
 /*
@@ -514,9 +555,7 @@ void extended_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Pr
   packets[index] = cmd_start | (cmd_type<<2) | ((cv_addr & 0x300)>>8);
   packets[index + 1] = 0xff & cv_addr;
   packets[index + 2] = cv_data;
-  pins_set(&PA7, 0);
   send_packet(packets, 5);
-  pins_set(&PA7, 1);
 }
 
 /*
@@ -541,9 +580,7 @@ void multifunction(uint16_t addr, uint16_t type, uint8_t data) {
   packets[0] = (0xc0 | (addr >> 8)); // packet must be 0b11xxxxxx
   packets[1] = addr & 0xff;
   packets[2] = ((type & 0x07)<<5) | (data & 0x1f);
-  pins_set(&PA7, 0);
   send_packet(packets, 3);
-  pins_set(&PA7, 1);
   // uart_arr("multi", packets, 3);
 }
 
@@ -552,21 +589,6 @@ void bitwise(char *buf, uint8_t value) {
     buf[i] = value & 0x80 ? '1' : '0';
     value <<= 1;
   }
-}
-
-/*
- * make idle packet sending faster
- * {preamble} 0 0xff 0 0x00 0 0xff 1
- * ~180us to save into buffer
- */
-void send_idle_packet() {
-  pins_set(&PA7, 0);
-  send_byte(idle_packet[0]);
-  send_byte(idle_packet[1]);
-  send_byte(idle_packet[2]);
-  send_byte(idle_packet[3]);
-  send_byte(idle_packet[4]);
-  pins_set(&PA7, 1);
 }
 
 void print_outputs(uint8_t port_outputs) {
@@ -583,43 +605,66 @@ int main(void) {
   if (decoder_addr == 0xffff) decoder_addr = 0x05; // default 267=0x10b
   DF("address in use: %u\n", decoder_addr);
 
-  pins_output(&L, 1);
-  pins_output(&R, 1);
-  pins_set(&R, 1);
-  pins_set(&L, 0);
+  PORTB.DIR |= PIN6_bm | PIN7_bm;
+  PORTB.OUT |= PIN6_bm | PIN7_bm; // PB6=PB7=1
 
+  /*
+  // debug pin for oscilloscope
   pins_output(&PA7, 1);
   pins_set(&PA7, 1);
+  */
 
   uint8_t port_outputs = 0;
-  uint8_t fill_with_idle = 0;
   uint8_t is_extended_mode = 0;
   PRG::Type_Prg_Cmd_Type prg_cmd_type = PRG::READ;
   PRG::Type_Prg_Mode prg_mode = PRG::SERVICE;
 
   timer_init();
+  _delay_ms(1);
 
-  // DBG START
+  // DBG
   /*
-  _delay_ms(10);
-  send_idle_packet();
-  while(1);
+    for (uint8_t i=0; i<10; i++) {
+      buffer[5*i] = 0xff;
+      buffer[5*i+1] = 0xf0;
+      buffer[5*i+2] = 0x00;
+      buffer[5*i+3] = 0x00;
+      buffer[5*i+4] = 0x01;
+    }
+    buff_pos_in = 400;
+    DF("buff_pos_in: %u\n", buff_pos_in);
+    uart_arr("buff", buffer, 50);
+    while(1);
 
-  send_bit(0);
-  send_bit(1);
-  send_byte(0xff);
-  uart_arr("buff final", buffer, 2);
-  DF("buff_pos_in: %u\n", buff_pos_in);
-  while (1);
+    uint16_t p = buff_pos_in;
+    uint8_t packets[2] = {0};
+    uint8_t len = 2;
 
-  buffer[0] = 0b11101;
-  buff_pos_in = 5;
-  buffer[0] <<= 3;
-  uart_arr("buff final", buffer, 2);
-  DF("buff_pos_in: %u\n", buff_pos_in);
-  while (1);
+    // preamble (ops: 12bits, service: 20bits)
+    for (uint8_t i=0; i<10; i++) {
+      p = send_byte(0xff, p);
+      for (uint8_t c=0; c<4; c++) p = send_bit(1, p);
+
+      // data
+      uint8_t x = 0;
+      for (uint8_t c=0; c<len; c++) {
+        p = send_bit(0, p);
+        p = send_byte(packets[c], p);
+        x ^= packets[c];
+      }
+      p = send_bit(0, p);
+      p = send_byte(x, p);
+      p = send_bit(1, p);
+
+      // activate new buffer entries
+    }
+      buff_pos_in = p;
+    DF("buff_pos_in: %u p: %u\n", buff_pos_in, p);
+    uart_arr("buff", buffer, 50);
+
+    while(1);
   */
-  // DBG END
+  // DBG
 
   while  (1) {
     switch (cmd_state) {
@@ -627,7 +672,10 @@ int main(void) {
         if (is_extended_mode) {
           extended_accessory(decoder_addr, 0);
         } else {
+          // DF("in: %u out: %u\n", buff_pos_in, buff_pos_out);
           basic_accessory(decoder_addr, 0, 0, 0); // addr, activation, output, is_roco
+          // uart_arr("buffer", buffer, BUFF_SIZE_BYTES);
+          // DF("in: %u out: %u\n", buff_pos_in, buff_pos_out);
         }
         port_outputs &= !(1 << 7); // clear bit 7
         if (!fill_with_idle) print_outputs(port_outputs); // avoid times without packets
@@ -665,20 +713,17 @@ int main(void) {
         break;
       case CMD_STATE::RESET:
         {
-          // 25 reset packets
           uint8_t packets[2] = {0};
-          pins_set(&PA7, 0);
+          /*
+          DF("in: %u out: %u\n", buff_pos_in, buff_pos_out);
+          send_packet(packets, 2);
+          uart_arr("buffer", buffer, BUFF_SIZE_BYTES);
+          DF("in: %u out: %u\n", buff_pos_in, buff_pos_out);
+          */
+          // 25 reset packets
           for (uint8_t c=0; c<25; c++) {
             send_packet(packets, 2);
           }
-          pins_set(&PA7, 1);
-          cmd_state = CMD_STATE::NONE;
-        }
-        break;
-      case CMD_STATE::CHECK:
-        {
-          basic_accessory_prg(decoder_addr, prg_mode, prg_cmd_type, 121, 0x05);
-          if (!fill_with_idle) DF("prg cmd: %s - %s\n", prg_mode == PRG::OPS ? "ops" : "service", prg_cmd_type == PRG::READ ? "read" : "write");
           cmd_state = CMD_STATE::NONE;
         }
         break;
@@ -698,7 +743,7 @@ int main(void) {
           uint32_t start = clock.current_tick;
           uint8_t packets[2] = {0};
           while ((clock.current_tick - start) < 410) {
-            send_packet(packets, 2);
+            send_packet(packets, 2); // TODO send reset packets in service mode
           }
           basic_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 120, (addr >> 8) & 0xff, 1); // msb, skip intro reset packets
           DF("new addr: %u/0x%03x\n", addr, addr);
@@ -765,7 +810,6 @@ int main(void) {
         DL("usage:");
         DF("  %u : turn left\n", CMD_STATE::TURN_LEFT);
         DF("  %u : turn right\n", CMD_STATE::TURN_RIGHT);
-        DF("  %u : check cv\n", CMD_STATE::CHECK);
         DF("  %u : " WARN("%s") " idle packets in between (toggle)\n", CMD_STATE::TOGGLE_IDLE, fill_with_idle ? "yes" : "no");
         DF("  %u : " WARN("%s") " mode (toggle)\n", CMD_STATE::TOGGLE_EXTENDED, is_extended_mode ? "extended" : "basic");
         DF("  %u : " WARN("%s") " prg type (toggle)\n", CMD_STATE::TOGGLE_PRG_CMD_TYPE, prg_cmd_type == PRG::READ ? "read" : "write");
@@ -778,10 +822,6 @@ int main(void) {
         DL("  help: show this help");
         cmd_state = CMD_STATE::NONE;
         break;
-    }
-
-    if (fill_with_idle) {
-      send_idle_packet();
     }
   }
 }
