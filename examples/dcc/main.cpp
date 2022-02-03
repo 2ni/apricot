@@ -16,6 +16,7 @@ volatile uint8_t done = 0;
 char buff[20];
 char uart_data[20];
 volatile uint8_t buff_p = 0;
+volatile uint16_t pause_signal_at = 65535;
 namespace CMD_STATE {
   typedef enum {
     NONE,
@@ -58,21 +59,30 @@ uint8_t idle_packets[IDLE_PACKETS_SIZE_BYTES] = { 0xff, 0xf7, 0xf8, 0x01, 0xff }
 uint8_t fill_with_idle = 0;
 volatile int8_t idle_packets_p = -1;
 
-pins_t R = PB6; // also control output
-pins_t L = PB7;
+// R = PB6, L = PB7 to control motor driver
 volatile uint8_t output = 0;
 uint16_t EEMEM ee_decoder_addr;
 volatile uint16_t decoder_addr;
 
-// 6 packets, 20bits preamble = 68bits
-// 0=long (116us) , 1=short (58us)
 // we create a bit buffer of uint8_t's with size: BUFF_SIZE_BYTES * 8
-#define BUFF_SIZE_BYTES 200
+// longest packet to be sent: prg new address with 2 bytes = 1834 bits ≈ 230bytes
+#define BUFF_SIZE_BYTES 230
 uint8_t buffer[BUFF_SIZE_BYTES] = {0};
 uint16_t buff_pos_in = 0;
 volatile uint16_t buff_pos_out = 0; // max 20*8
 volatile uint8_t current_bit = 0;
 volatile uint8_t edgecount = 0;
+
+uint8_t pause_buffer_processing() {
+  uint8_t already_pausing = pause_signal_at != 65535;
+  if (!already_pausing) pause_signal_at = buff_pos_in;
+
+  return already_pausing;
+}
+
+void resume_buffer_processing(uint8_t already_pausing = 0) {
+  if (!already_pausing) pause_signal_at = 65535;
+}
 
 /*
  * get current bit buffer to send out
@@ -103,42 +113,32 @@ uint8_t inc_rollover(uint16_t *value, uint16_t max, uint8_t increment = 1) {
  * add bit to transmission buffer
  * (buff_add_bit)
  */
-uint16_t send_bit(uint8_t bit, uint16_t buff_pos_start = 65535) {
-  uint8_t bp = buff_pos_start != 65535;
-  uint16_t buff_pos = bp ? buff_pos_start : buff_pos_in;
-
-  uint8_t v = 1<<(7-(buff_pos%8));
+void send_bit(uint8_t bit) {
+  uint8_t v = 1<<(7-(buff_pos_in%8));
   if (bit) {
-    buffer[buff_pos/8] |= v;
+    buffer[buff_pos_in/8] |= v;
   } else {
-    buffer[buff_pos/8] &= ~v;
+    buffer[buff_pos_in/8] &= ~v;
   }
-  uint16_t next = buff_pos;
-  inc_rollover(&next, BUFF_SIZE_BYTES*8);
+  inc_rollover(&buff_pos_in, BUFF_SIZE_BYTES*8);
   // wait for free space
   // while (next == buff_pos_out);
 
   uint8_t warned = 0;
-  while (next == buff_pos_out) {
+  while (buff_pos_in == buff_pos_out) {
     if (!warned) {
       warned = 1;
       DL("buf ofv");
     }
   }
-
-  if (!bp) buff_pos_in = next;
-
-  return next;
 }
 
 /*
  * add byte to transmission buffer
  * (buff_add_byte)
  */
-uint16_t send_byte(uint8_t value, uint16_t buff_pos_start = 65535) {
-  uint8_t bp = buff_pos_start != 65535;
-  uint16_t buff_pos = bp ? buff_pos_start : buff_pos_in;
-  uint16_t next = buff_pos;
+void send_byte(uint8_t value) {
+  uint16_t next = buff_pos_in;
   uint8_t overflow = inc_rollover(&next, BUFF_SIZE_BYTES*8, 8);
   // wait for free space in buffer (byte)
   // while (overflow && (next >= buff_pos_out));
@@ -151,8 +151,8 @@ uint16_t send_byte(uint8_t value, uint16_t buff_pos_start = 65535) {
     }
   }
 
-  uint16_t cur_buff_byte = buff_pos/8;
-  uint8_t buff_pos_in_byte = buff_pos%8;
+  uint16_t cur_buff_byte = buff_pos_in/8;
+  uint8_t buff_pos_in_byte = buff_pos_in%8;
   buffer[cur_buff_byte] &= ~(0xff>>buff_pos_in_byte);
   buffer[cur_buff_byte] |= value>>buff_pos_in_byte;
   if (buff_pos_in_byte) {
@@ -160,11 +160,7 @@ uint16_t send_byte(uint8_t value, uint16_t buff_pos_start = 65535) {
     buffer[cur_buff_byte] &= ~((0xff>>(8-buff_pos_in_byte))<<(8-buff_pos_in_byte));
     buffer[cur_buff_byte] |= (value & (0xff>>(8-buff_pos_in_byte)))<<(8-buff_pos_in_byte);
   }
-  inc_rollover(&buff_pos, BUFF_SIZE_BYTES*8, 8);
-
-  if (!bp) buff_pos_in = buff_pos;
-
-  return buff_pos;
+  inc_rollover(&buff_pos_in, BUFF_SIZE_BYTES*8, 8);
 }
 
 /*
@@ -174,8 +170,8 @@ uint16_t send_byte(uint8_t value, uint16_t buff_pos_start = 65535) {
 ISR(TCA0_OVF_vect) {
   TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
 
-  // no data to send
-  if (!fill_with_idle && buff_pos_in == buff_pos_out) {
+  // no data to send and idle packet not done or not in action (idle_packets_p == 0 || idle_packets_p == -1)
+  if (idle_packets_p <= 0 && !fill_with_idle && (buff_pos_out == buff_pos_in || (pause_signal_at != 65535 && buff_pos_out == pause_signal_at))) {
     PORTB.OUT |= PIN6_bm | PIN7_bm; // PB6=PB7=1
     edgecount = 0;
     return;
@@ -192,7 +188,7 @@ ISR(TCA0_OVF_vect) {
 
   // signal start
   if (edgecount == 0) {
-    uint8_t has_data = (buff_pos_in != buff_pos_out);
+    uint8_t has_data = (buff_pos_in != buff_pos_out) && (pause_signal_at == 65535 || buff_pos_out != pause_signal_at);
     // activate sending idle packets
     if (!has_data && idle_packets_p == -1) {
       idle_packets_p = 0;
@@ -399,26 +395,25 @@ void timer_init() {
  */
 void send_packet(uint8_t *packets, uint8_t len, PRG::Type_Prg_Mode mode = PRG::OPS) {
   // we "activate" the new buffer entries only at the end
-  uint16_t p;
+  uint8_t pause = pause_buffer_processing();
 
   // preamble (ops: 12bits, service: 20bits)
-  p = send_byte(0xff, buff_pos_in);
-  if (mode == PRG::SERVICE) p = send_byte(0xff, p);
-  for (uint8_t c=0; c<4; c++) p = send_bit(1, p);
+  send_byte(0xff);
+  if (mode == PRG::SERVICE) send_byte(0xff);
+  for (uint8_t c=0; c<4; c++) send_bit(1);
 
   // data
   uint8_t x = 0;
   for (uint8_t c=0; c<len; c++) {
-    p = send_bit(0, p);
-    p = send_byte(packets[c], p);
+    send_bit(0);
+    send_byte(packets[c]);
     x ^= packets[c];
   }
-  p = send_bit(0, p);
-  p = send_byte(x, p);
-  p = send_bit(1, p);
+  send_bit(0);
+  send_byte(x);
+  send_bit(1);
 
-  // activate new buffer entries
-  buff_pos_in = p;
+  resume_buffer_processing(pause);
 
   // uart_arr("packets", packets, len);
   // DF("xor: 0x%02x\n", x);
@@ -472,6 +467,10 @@ void basic_accessory(uint16_t addr, uint8_t activation, uint8_t output, uint8_t 
  * mode:     PRG::OPS, PRG::SERVICE
  * cmd_type: PRG::READ, PRG::WRITE, PRG::BIT
  * addr is ignored if PRG::SERVICE
+ *
+ * longest packet:
+ *   service: 25 reset packets + 1 data packet with 4 bytes = 25*(12+3*8+4) + 20+4*8+5 = 1057 ≈ 133bytes
+ *   ops: 2 data packets with 6 bytes = 2*(12+6*8+7) = 134bits ≈ 17bytes
  */
 void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_Cmd_Type cmd_type, uint16_t cv_addr, uint8_t cv_data, uint8_t skip_resets = 0, uint8_t is_roco = 0) {
   uint8_t packets[5] = {0};
@@ -481,10 +480,12 @@ void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_C
   uint8_t num = 3;
   uint8_t cmd_start = 0b0111<<4; // service
 
+  uint8_t pause = pause_buffer_processing();
+
   // send reset packets 1st (only in service mode before 1st packet)
   if (mode == PRG::SERVICE && !skip_resets) {
     for (uint8_t c=0; c<25; c++) {
-      send_packet(packets, 2);
+      send_packet(packets, 2, mode);
     }
   }
 
@@ -505,7 +506,10 @@ void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_C
   send_packet(packets, num, mode);
   // write requires 2 similar packets while in ops mode (in real env)
   if (mode == PRG::OPS && cmd_type == PRG::WRITE) send_packet(packets, num, mode);
+
   // uart_arr("prg", packets, num);
+  // activate (=send) newest buffer entries
+  resume_buffer_processing(pause);
 }
 
 void basic_accessory_prg_bit(uint16_t addr, PRG::Type_Prg_Mode mode, uint16_t cv_addr, uint8_t write, uint8_t bit_addr, uint8_t bit_value, uint8_t is_roco = 0) {
@@ -694,6 +698,7 @@ int main(void) {
       case CMD_STATE::CMD_CHGADDR_PROCESS:
         {
           uint16_t addr = char2int(uart_data);
+          pause_buffer_processing();
           basic_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 121, addr & 0xff); // lsb
           // 1 reset 7.772ms -> 14 packets
           // wait 100ms filling with reset (=12.86670098 reset packets)
@@ -702,6 +707,7 @@ int main(void) {
             send_packet(packets, 2);
           }
           basic_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 120, (addr >> 8) & 0xff, 1); // msb, skip intro reset packets
+          resume_buffer_processing();
           DF("new addr: %u/0x%03x\n", addr, addr);
           cmd_state = CMD_STATE::NONE;
         }
