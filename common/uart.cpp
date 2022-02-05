@@ -131,9 +131,9 @@ void uart_send_char(unsigned char c) {
   _uart_is_busy = 1;
   uint8_t next = tx_in;
   uart_rollover(&next, TX_BUFF_SIZE);
+  while (next == tx_out);
   tx_buff[tx_in] = c;
   // wait until at least one byte free
-  while (next == tx_out);
   tx_in = next;
   USART0.CTRLA |= USART_DREIE_bm;
 
