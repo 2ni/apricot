@@ -66,7 +66,7 @@ volatile uint16_t decoder_addr;
 
 // we create a bit buffer of uint8_t's with size: BUFF_SIZE_BYTES * 8
 // longest packet to be sent: prg new address with 2 bytes = 1834 bits ≈ 230bytes
-#define BUFF_SIZE_BYTES 230
+#define BUFF_SIZE_BYTES 5 // min 2
 uint8_t buffer[BUFF_SIZE_BYTES] = {0};
 uint16_t buff_pos_in = 0;
 volatile uint16_t buff_pos_out = 0; // max 20*8
@@ -92,21 +92,16 @@ uint8_t buff_get_current_bit(uint8_t *b, uint16_t p) {
   return (b[p/8] & (1<<(7-(p%8)))) ? 1 : 0;
 }
 
-/*
- * increment value and rollover if equals max
- */
-uint8_t inc_rollover(volatile uint16_t *value, uint16_t max, uint8_t increment = 1) {
-  uint16_t new_value = *value + increment;
-  uint8_t overflow = new_value >= max;
-  *value = overflow ? new_value - max : new_value;
-  return overflow;
+void rollover(uint16_t *value, uint16_t max) {
+*value = ++*value >= max ? 0 : *value;
 }
 
-uint8_t inc_rollover(uint16_t *value, uint16_t max, uint8_t increment = 1) {
-  uint16_t new_value = *value + increment;
-  uint8_t overflow = new_value >= max;
-  *value = overflow ? new_value - max : new_value;
-  return overflow;
+void rollover(volatile uint16_t *value, uint16_t max) {
+*value = ++*value >= max ? 0 : *value;
+}
+
+void rollover(volatile int8_t *value, uint8_t max) {
+*value = ++*value >= max ? 0 : *value;
 }
 
 /*
@@ -114,23 +109,28 @@ uint8_t inc_rollover(uint16_t *value, uint16_t max, uint8_t increment = 1) {
  * (buff_add_bit)
  */
 void send_bit(uint8_t bit) {
+  uint16_t next = buff_pos_in;
+  rollover(&next, BUFF_SIZE_BYTES*8);
+
+  // wait for free space
+  while (next == buff_pos_out);
+  /*
+  uint8_t warned = 0;
+  while (next == buff_pos_out) {
+    if (!warned) {
+      warned = 1;
+      DL("buf ofv");
+    }
+  }
+  */
+
   uint8_t v = 1<<(7-(buff_pos_in%8));
   if (bit) {
     buffer[buff_pos_in/8] |= v;
   } else {
     buffer[buff_pos_in/8] &= ~v;
   }
-  inc_rollover(&buff_pos_in, BUFF_SIZE_BYTES*8);
-  // wait for free space
-  // while (next == buff_pos_out);
-
-  uint8_t warned = 0;
-  while (buff_pos_in == buff_pos_out) {
-    if (!warned) {
-      warned = 1;
-      DL("buf ofv");
-    }
-  }
+  buff_pos_in = next;
 }
 
 /*
@@ -138,35 +138,16 @@ void send_bit(uint8_t bit) {
  * (buff_add_byte)
  */
 void send_byte(uint8_t value) {
-  uint16_t next = buff_pos_in;
-  uint8_t overflow = inc_rollover(&next, BUFF_SIZE_BYTES*8, 8);
-  // wait for free space in buffer (byte)
-  // while (overflow && (next >= buff_pos_out));
-
-  uint8_t warned = 0;
-  while (overflow && (next >= buff_pos_out)) {
-    if (!warned) {
-      warned = 1;
-      DL("buf ofv");
-    }
+  for (uint8_t b=0; b<8; b++) {
+    send_bit((value & (1<<(7-b))) ? 1 : 0);
   }
-
-  uint16_t cur_buff_byte = buff_pos_in/8;
-  uint8_t buff_pos_in_byte = buff_pos_in%8;
-  buffer[cur_buff_byte] &= ~(0xff>>buff_pos_in_byte);
-  buffer[cur_buff_byte] |= value>>buff_pos_in_byte;
-  if (buff_pos_in_byte) {
-    inc_rollover(&cur_buff_byte, BUFF_SIZE_BYTES);
-    buffer[cur_buff_byte] &= ~((0xff>>(8-buff_pos_in_byte))<<(8-buff_pos_in_byte));
-    buffer[cur_buff_byte] |= (value & (0xff>>(8-buff_pos_in_byte)))<<(8-buff_pos_in_byte);
-  }
-  inc_rollover(&buff_pos_in, BUFF_SIZE_BYTES*8, 8);
 }
 
 /*
  * interrupt set to 58us
  * handle 1=58us and 0=116us bit signals from our buffer
  */
+volatile uint8_t bitout = 0;
 ISR(TCA0_OVF_vect) {
   TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
 
@@ -204,6 +185,10 @@ ISR(TCA0_OVF_vect) {
     } else {
       current_bit = buff_get_current_bit(idle_packets, idle_packets_p);
     }
+    /*
+    DF("%u", current_bit);
+    if (bitout++%8 == 7) D(" ");
+    */
   }
 
   edgecount++;
@@ -213,10 +198,10 @@ ISR(TCA0_OVF_vect) {
     // get next bit within it buffer is 0 1 2 3 4 5 6 7 8 9...
     //                                 |    buff[0]    | buff[1]...
     if (idle_packets_p == -1) {
-      inc_rollover(&buff_pos_out, BUFF_SIZE_BYTES*8);
+      rollover(&buff_pos_out, BUFF_SIZE_BYTES*8);
     }
     else {
-      idle_packets_p = ++idle_packets_p >= (IDLE_PACKETS_SIZE_BYTES*8) ? 0 : idle_packets_p; // make faster than inc_rollover(&idle_packets_p, 40);
+      rollover(&idle_packets_p, IDLE_PACKETS_SIZE_BYTES*8);
     }
     edgecount = 0;
   }
@@ -395,7 +380,7 @@ void timer_init() {
  */
 void send_packet(uint8_t *packets, uint8_t len, PRG::Type_Prg_Mode mode = PRG::OPS) {
   // we "activate" the new buffer entries only at the end
-  uint8_t pause = pause_buffer_processing();
+  // uint8_t pause = pause_buffer_processing();
 
   // preamble (ops: 12bits, service: 20bits)
   send_byte(0xff);
@@ -413,7 +398,7 @@ void send_packet(uint8_t *packets, uint8_t len, PRG::Type_Prg_Mode mode = PRG::O
   send_byte(x);
   send_bit(1);
 
-  resume_buffer_processing(pause);
+  // resume_buffer_processing(pause);
 
   // uart_arr("packets", packets, len);
   // DF("xor: 0x%02x\n", x);
@@ -480,7 +465,7 @@ void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_C
   uint8_t num = 3;
   uint8_t cmd_start = 0b0111<<4; // service
 
-  uint8_t pause = pause_buffer_processing();
+  // uint8_t pause = pause_buffer_processing();
 
   // send reset packets 1st (only in service mode before 1st packet)
   if (mode == PRG::SERVICE && !skip_resets) {
@@ -509,7 +494,7 @@ void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_C
 
   // uart_arr("prg", packets, num);
   // activate (=send) newest buffer entries
-  resume_buffer_processing(pause);
+  // resume_buffer_processing(pause);
 }
 
 void basic_accessory_prg_bit(uint16_t addr, PRG::Type_Prg_Mode mode, uint16_t cv_addr, uint8_t write, uint8_t bit_addr, uint8_t bit_value, uint8_t is_roco = 0) {
@@ -612,11 +597,9 @@ int main(void) {
   PORTB.DIR |= PIN6_bm | PIN7_bm;
   PORTB.OUT |= PIN6_bm | PIN7_bm; // PB6=PB7=1
 
-  /*
   // debug pin for oscilloscope
-  pins_output(&PA7, 1);
-  pins_set(&PA7, 1);
-  */
+  // pins_output(&PA7, 1);
+  // pins_set(&PA7, 1);
 
   uint8_t port_outputs = 0;
   uint8_t is_extended_mode = 0;
@@ -624,7 +607,6 @@ int main(void) {
   PRG::Type_Prg_Mode prg_mode = PRG::SERVICE;
 
   timer_init();
-  _delay_ms(1);
 
   while  (1) {
     switch (cmd_state) {
@@ -632,13 +614,10 @@ int main(void) {
         if (is_extended_mode) {
           extended_accessory(decoder_addr, 0);
         } else {
-          // DF("in: %u out: %u\n", buff_pos_in, buff_pos_out);
           basic_accessory(decoder_addr, 0, 0, 0); // addr, activation, output, is_roco
-          // uart_arr("buffer", buffer, BUFF_SIZE_BYTES);
-          // DF("in: %u out: %u\n", buff_pos_in, buff_pos_out);
         }
         port_outputs &= !(1 << 7); // clear bit 7
-        if (!fill_with_idle) print_outputs(port_outputs); // avoid times without packets
+        print_outputs(port_outputs);
         cmd_state = CMD_STATE::NONE;
         break;
       case CMD_STATE::TURN_RIGHT:
@@ -648,7 +627,7 @@ int main(void) {
           basic_accessory(decoder_addr, 0, 1, 0);
         }
         port_outputs |= (1 << 7); // set bit 7
-        if (!fill_with_idle) print_outputs(port_outputs);
+        print_outputs(port_outputs);
         cmd_state = CMD_STATE::NONE;
         break;
       case CMD_STATE::TOGGLE_IDLE:
@@ -698,7 +677,7 @@ int main(void) {
       case CMD_STATE::CMD_CHGADDR_PROCESS:
         {
           uint16_t addr = char2int(uart_data);
-          pause_buffer_processing();
+          // pause_buffer_processing();
           basic_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 121, addr & 0xff); // lsb
           // 1 reset 7.772ms -> 14 packets
           // wait 100ms filling with reset (=12.86670098 reset packets)
@@ -707,7 +686,7 @@ int main(void) {
             send_packet(packets, 2);
           }
           basic_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 120, (addr >> 8) & 0xff, 1); // msb, skip intro reset packets
-          resume_buffer_processing();
+          // resume_buffer_processing();
           DF("new addr: %u/0x%03x\n", addr, addr);
           cmd_state = CMD_STATE::NONE;
         }
