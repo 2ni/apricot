@@ -240,12 +240,26 @@ uint8_t  uart_sec2human(char *buf, uint16_t secs) {
   else return sprintf(buf, "%02us", seconds);
 }
 
+/*
+ * fast implemention to print arrays
+ * (avoid using any printf call)
+ */
 void uart_arr(const char *name, uint8_t *arr, uint8_t len, uint8_t newline) {
-  DF("%s:", name);
-  for(uint8_t i=0; i<len; i++) {
-    DF(" %02x", arr[i]);
+  const char *name_start = name;
+  while (*name) uart_send_char(*name++);
+  if (name_start != name) {
+    uart_send_char(':');
+    uart_send_char(' ');
   }
-  if (newline) DL("");
+
+  for (uint8_t i=0; i<len; i++) {
+    uint8_t hi = (arr[i] >> 4) & 0xf;
+    uint8_t lo = arr[i] & 0xf;
+    uart_send_char(hi < 10 ? '0' + hi : ('a' + hi - 10));
+    uart_send_char(lo < 10 ? '0' + lo : ('a' + lo - 10));
+    if (i<(len-1)) uart_send_char(' ');
+  }
+  if (newline) uart_send_char('\n');
 }
 
 /*
