@@ -136,7 +136,7 @@ void activate_service_prg() {
   in_service_prg = 1;
   // pins_set(&pins_led, 1);
   ts_last_prg_cmd = clock.current_tick;
-  DL("prg on");
+  // DL("prg on");
 }
 
 void deactivate_service_prg() {
@@ -145,7 +145,7 @@ void deactivate_service_prg() {
   ts_last_prg_cmd = 0;
   address_tmp = 0;
   address_last_cv = 0;
-  DL("prg off");
+  // DL("prg off");
 }
 
 uint8_t is_service_cmd(uint8_t *packets, uint8_t *packets_count) {
@@ -154,6 +154,52 @@ uint8_t is_service_cmd(uint8_t *packets, uint8_t *packets_count) {
   }
   return 1;
 }
+
+void cv_bytewise_read(PRG::Type_Prg_Mode mode, uint8_t *cv, uint8_t value) {
+  if (mode == PRG::SERVICE && *cv == value) {
+    // start consuming >+60mA for 5-7ms if in mode SERVICE
+    ts_ack_start = clock.current_tick;
+    stepper.keep();
+    pins_set(&pins_led, 1);
+  }
+}
+
+void cv_bytewise_write(PRG::Type_Prg_Mode mode, uint8_t *cv, uint8_t value) {
+  // TODO write only after 2nd packet in OPS mode
+  *cv = value;
+  eeprom_update_block(&cfg, &ee_cfg, sizeof(CFG::Type_CVs));
+  // ack in service mode only
+  if (mode == PRG::SERVICE) {
+    ts_ack_start = clock.current_tick;
+    stepper.keep();
+    pins_set(&pins_led, 1);
+  }
+}
+
+void cv_bitwise(PRG::Type_Prg_Mode mode, uint8_t bit_write, uint8_t *cv, uint8_t bit_addr, uint8_t bit_value) {
+  // read
+  if (mode == PRG::SERVICE && !bit_write && bit_value == ((*cv >> bit_addr) & 0x01)) {
+    // start consuming >+60mA for 5-7ms if in mode SERVICE
+    ts_ack_start = clock.current_tick;
+    stepper.keep();
+    pins_set(&pins_led, 1);
+  }
+
+  // TODO write only after 2nd packet in OPS mode
+  if (bit_write) {
+    if (bit_value) *cv |= 1<<bit_addr;
+    else *cv &= ~(1<<bit_addr);
+    eeprom_update_block(&cfg, &ee_cfg, sizeof(CFG::Type_CVs));
+    // ack in service mode only
+    if (mode == PRG::SERVICE) {
+      // start consuming >+60mA for 5-7ms if in mode SERVICE
+      ts_ack_start = clock.current_tick;
+      stepper.keep();
+      pins_set(&pins_led, 1);
+    }
+  }
+}
+
 
 /*
  *
@@ -166,6 +212,11 @@ uint8_t is_service_cmd(uint8_t *packets, uint8_t *packets_count) {
  *   VVVVVVVVVV: 10bit CV address
  *   DDDDDDDD  : CV value
  *
+ *   bitwise: 111K-DBBB
+ *     BBB: bit position (0-7)
+ *     K  : 1=write, 0=read
+ *     D  : bit value to check/write
+ *
  * address_tmp is only cleared if prg mode is left
  */
 void handle_cv(PRG::Type_Prg_Mode mode, uint8_t *packets, uint8_t *packets_count) {
@@ -176,48 +227,45 @@ void handle_cv(PRG::Type_Prg_Mode mode, uint8_t *packets, uint8_t *packets_count
   uint8_t index = mode == PRG::SERVICE ? 0 : 2; // in ops mode first 2 packets contain address (amongst other)
   uint8_t cmd_type = (packets[index] & 0x0c) >> 2;
   uint16_t cv = (((packets[index] & 0x03) << 8) | packets[index+1]) + 1;
-  DF("cv#%u: %u\n", cv, packets[index+2]);
+  uint8_t bit_write = 0;
+  uint8_t bit_addr = 0;
+  uint8_t value = 0;
+
+  if (cmd_type == 0x02) {
+    bit_write = packets[index+2] & 0x10;
+    value = (packets[index+2] & 0x08) >> 3;
+    bit_addr = packets[index+2] & 0x07;
+    // DF("cv#%u: %s bit%u %u\n", cv, bit_write ? "write" : "read", bit_addr, value);
+  } else {
+    value = packets[index+2];
+    // DF("cv#%u: %s 0x%02x\n", cv, cmd_type == 0x03 ? "write" : "read", packets[index+2]);
+  }
 
   // cv#120: MSB, cv#121: LSB
   if (cv == 120 || cv == 121) {
     switch (cmd_type) {
-      // verify
-      case 0x01:
-        if (packets[index+2] == (cv == 121 ? cfg.CV121 : cfg.CV120)) {
-          // start consuming >+60mA for 5-7ms if in mode SERVICE
-          if (mode == PRG::SERVICE) {
-            ts_ack_start = clock.current_tick;
-            stepper.keep();
-            pins_set(&pins_led, 1);
-            DL("ack start");
-          }
-        }
+      case 0x01: // read/verify
+        cv_bytewise_read(mode, cv == 121 ? &cfg.CV121 : &cfg.CV120, value);
         break;
       // write
       case 0x03:
         // start consuming >+60mA for 5-7ms
         // in service mode we can directly set the msb or lsb as no address is used to communicate
         if (mode == PRG::SERVICE) {
-          if (cv == 120) cfg.CV120 = packets[index+2];
-          if (cv == 121) cfg.CV121 = packets[index+2];
-          eeprom_update_block(&cfg, &ee_cfg, sizeof(CFG::Type_CVs));
-          ts_ack_start = clock.current_tick;
-          stepper.keep();
-          pins_set(&pins_led, 1);
-          DF("new address: %u/0x%03x\n", get_cur_addr(), get_cur_addr());
-          DL("ack start");
+          cv_bytewise_write(mode, cv == 120 ? &cfg.CV120 : &cfg.CV121, value);
+          // DF("new address: %u/0x%03x\n", get_cur_addr(), get_cur_addr());
         }
 
         // TODO: write only after 2nd packet
         if (mode == PRG::OPS && ((address_last_cv == 121 && cv == 120) || (address_last_cv == 120 && cv == 121))) {
-          cfg.CV121 = cv == 121 ? packets[index+2] : address_tmp;
-          cfg.CV120 = cv == 120 ? packets[index+2] : address_tmp;
+          cfg.CV121 = cv == 121 ? value : address_tmp;
+          cfg.CV120 = cv == 120 ? value : address_tmp;
           eeprom_update_block(&cfg, &ee_cfg, sizeof(CFG::Type_CVs));
           address_tmp = 0;
           address_last_cv = 0;
           DF("new address: %u/0x%03x\n", get_cur_addr(), get_cur_addr());
         } else {
-          address_tmp = packets[index+2];
+          address_tmp = value;
           address_last_cv = cv;
         }
         break;
@@ -226,56 +274,15 @@ void handle_cv(PRG::Type_Prg_Mode mode, uint8_t *packets, uint8_t *packets_count
     }
   } else if (cv == 29) {
     switch (cmd_type) {
-      case 0x01: // verify
-        if (mode == PRG::SERVICE && packets[index+2] == cfg.CV29) {
-          ts_ack_start = clock.current_tick;
-          stepper.keep();
-          pins_set(&pins_led, 1);
-          DL("ack start");
-        }
+      case 0x01: // read/verify
+        cv_bytewise_read(mode, &cfg.CV29, value);
         break;
       case 0x03: // write
         // TODO write only after 2nd packet in OPS mode
-        cfg.CV29 = packets[index+2];
-        eeprom_update_block(&cfg, &ee_cfg, sizeof(CFG::Type_CVs));
-        // ack in service mode only
-        if (mode == PRG::SERVICE) {
-          ts_ack_start = clock.current_tick;
-          stepper.keep();
-          pins_set(&pins_led, 1);
-        }
+        cv_bytewise_write(mode, &cfg.CV29, value);
         break;
-      // bitwise read or write
-      // DDDDDDDD: 111K-DBBB
-      // K=1: write bit, K=0: read bit
-      // D=value
-      // BBB=bitposition 0-7
       case 0x02: // bitwise
-        {
-          uint8_t write = packets[index+2] & 0x10;
-          uint8_t d = (packets[index+2] & 0x08) >> 3;
-          uint8_t bit_addr = packets[index+2] & 0x07;
-          // read
-          if (mode == PRG::SERVICE && !write && d == ((cfg.CV29 >> bit_addr) & 0x01)) {
-            ts_ack_start = clock.current_tick;
-            stepper.keep();
-            pins_set(&pins_led, 1);
-            DL("ack start");
-          }
-
-          // TODO write only after 2nd packet in OPS mode
-          if (write) {
-            if (d) cfg.CV29 |= 1<<bit_addr;
-            else cfg.CV29 &= ~(1<<bit_addr);
-            eeprom_update_block(&cfg, &ee_cfg, sizeof(CFG::Type_CVs));
-            // ack in service mode only
-            if (mode == PRG::SERVICE) {
-              ts_ack_start = clock.current_tick;
-              stepper.keep();
-              pins_set(&pins_led, 1);
-            }
-          }
-        }
+        cv_bitwise(mode, bit_write, &cfg.CV29, bit_addr, value);
         break;
     }
   }
@@ -292,6 +299,9 @@ int main(void) {
   eeprom_read_block(&cfg, &ee_cfg, sizeof(CFG::Type_CVs));
   if ((cfg.CV120 & cfg.CV121 & cfg.CV29) == 0xff) cfg = cfg_default;
 
+  DF("CV120: 0x%02x\n", cfg.CV120);
+  DF("CV121: 0x%02x\n", cfg.CV121);
+  DF("CV29: 0x%02x\n", cfg.CV29);
   DF("current address: %u (0x%02x)\n", get_cur_addr(), get_cur_addr());
 
   pins_output(&DCC, 0); // set as input
@@ -344,7 +354,7 @@ int main(void) {
         DL("*");
         state_packet = DCC_STATE::WAITPREAMBLE;
         preamble_count = 0;
-        break;
+        continue;
       }
 
       dcc_bit = TCA0.SINGLE.CNT < 870; // 10MHz -> 870: 87us. 58us: 1, 116us: 0
@@ -401,12 +411,14 @@ int main(void) {
               // sniffing all packets except idle / reset
               // idle:  ff 00 ff
               // reset: 00 00 00
+              /*
               if (!(dcc_packets_count == 3 && (
                   (dcc_packets[0] == 0xff && dcc_packets[1] == 0x00 && dcc_packets[2] == 0xff)
                   || (dcc_packets[0] == 0x00 && dcc_packets[1] == 0x00 && dcc_packets[2] == 0x00)
                ))) {
                 uart_arr("", dcc_packets, dcc_packets_count);
               }
+              */
 
 
               // reset packet
@@ -459,7 +471,7 @@ int main(void) {
                   uint16_t addr = (module_addr - 1) * 4 + port;
                   uint8_t output = dcc_packets[1] & 0x01; // "R" 0=left, 1=right ("which coil should be de/activated")
                   DF("basic: %u (0x%04x), activation: %u, output: %u\n", addr, addr, activation, output);
-                  if (addr == get_cur_addr()) {
+                  if (!(cfg.CV29 & (1<<5)) && addr == get_cur_addr()) {
                     move_turnout(output & 0x01);
                   }
 
@@ -480,7 +492,7 @@ int main(void) {
               } else if (dcc_packets[0] >= 128 && dcc_packets[0] <= 191 && (dcc_packets[1] & 0x89) == 0x01) {
                 uint16_t addr = ((dcc_packets[0] & 0x3f)<<2) | ((uint16_t)((~dcc_packets[1] & 0x70))<<4) | ((dcc_packets[1] & 0x06)>>1);
                 DF("extended: (11bit): %u (0x%04x), data: 0x%02x\n", addr, addr, dcc_packets[2]);
-                if (addr == get_cur_addr()) {
+                if ((cfg.CV29 & (1<<5)) && addr == get_cur_addr()) {
                   move_turnout(dcc_packets[2] & 0x01);
                 }
               }
@@ -504,7 +516,6 @@ int main(void) {
       // stop consuming
       stepper.stop();
       pins_set(&pins_led, 0);
-      DL("ack stop");
     }
 
     // timeout prg mode
