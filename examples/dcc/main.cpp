@@ -53,9 +53,9 @@ namespace PRG {
   } Type_Prg_Cmd_Type;
 }
 
-// predefine idle_packets
-#define IDLE_PACKETS_SIZE_BYTES 5
-uint8_t idle_packets[IDLE_PACKETS_SIZE_BYTES] = { 0xff, 0xf7, 0xf8, 0x01, 0xff };
+// predefine buffer for idle packets
+#define BUFF_IDLE_SIZE_BYTES 5
+uint8_t buffer_idle_packets[BUFF_IDLE_SIZE_BYTES] = { 0xff, 0xf7, 0xf8, 0x01, 0xff };
 uint8_t fill_with_idle = 0;
 volatile int8_t idle_packets_p = -1;
 
@@ -106,6 +106,7 @@ void rollover(volatile int8_t *value, uint8_t max) {
 
 /*
  * add bit to transmission buffer
+ * ~40us
  * (buff_add_bit)
  */
 void send_bit(uint8_t bit) {
@@ -135,6 +136,7 @@ void send_bit(uint8_t bit) {
 
 /*
  * add byte to transmission buffer
+ * ~200us
  * (buff_add_byte)
  */
 void send_byte(uint8_t value) {
@@ -183,7 +185,7 @@ ISR(TCA0_OVF_vect) {
     if (idle_packets_p == -1) {
       current_bit = buff_get_current_bit(buffer, buff_pos_out);
     } else {
-      current_bit = buff_get_current_bit(idle_packets, idle_packets_p);
+      current_bit = buff_get_current_bit(buffer_idle_packets, idle_packets_p);
     }
     /*
     DF("%u", current_bit);
@@ -201,7 +203,7 @@ ISR(TCA0_OVF_vect) {
       rollover(&buff_pos_out, BUFF_SIZE_BYTES*8);
     }
     else {
-      rollover(&idle_packets_p, IDLE_PACKETS_SIZE_BYTES*8);
+      rollover(&idle_packets_p, BUFF_IDLE_SIZE_BYTES*8);
     }
     edgecount = 0;
   }
@@ -238,7 +240,7 @@ uint16_t _char2int(char *data_in, uint8_t len) {
     start = 2;
   }
   for (uint8_t i=start; i<len; i++) {
-    value = value*base + data_in[i] - '0';
+    value = value*base + (data_in[i] >= 'a' ? data_in[i] - 'a' + 10 : data_in[i] - '0');
   }
 
   return value;
@@ -598,8 +600,10 @@ int main(void) {
   PORTB.OUT |= PIN6_bm | PIN7_bm; // PB6=PB7=1
 
   // debug pin for oscilloscope
-  // pins_output(&PA7, 1);
-  // pins_set(&PA7, 1);
+  /*
+  pins_output(&PA7, 1);
+  pins_set(&PA7, 1);
+  */
 
   uint8_t port_outputs = 0;
   uint8_t is_extended_mode = 0;
