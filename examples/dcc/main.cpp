@@ -15,6 +15,7 @@
 volatile uint8_t done = 0;
 char buff[20];
 char uart_data[20];
+char uart_cmd[6];
 volatile uint8_t buff_p = 0;
 volatile uint16_t pause_signal_at = 65535;
 namespace CMD_STATE {
@@ -27,17 +28,13 @@ namespace CMD_STATE {
     TOGGLE_PRG_CMD_TYPE,
     TOGGLE_PRG_MODE,
     RESET,
-    CMD_ADDR_WAITFOR,
-    CMD_CHGADDR_WAITFOR,
-    CMD_CHGADDR_PROCESS,
-    CMD_CV_WAITFOR,
-    CMD_CV_PROCESS,
-    CMD_CVB_WAITFOR,
-    CMD_CVB_PROCESS,
-    SHOW_HELP,
+    PROCESS_UART_CMD,
+    PROCESS_UART_DATA_WAITFOR,
+    PROCESS_UART_DATA
   } Type_Cmd_State;
 }
-volatile CMD_STATE::Type_Cmd_State cmd_state = CMD_STATE::SHOW_HELP;
+volatile CMD_STATE::Type_Cmd_State cmd_state = CMD_STATE::NONE;
+volatile uint8_t to_print = 0;
 
 namespace PRG {
   typedef enum {
@@ -149,7 +146,7 @@ void send_byte(uint8_t value) {
  * interrupt set to 58us
  * handle 1=58us and 0=116us bit signals from our buffer
  */
-volatile uint8_t bitout = 0;
+// volatile uint8_t bitout = 0;
 ISR(TCA0_OVF_vect) {
   TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
 
@@ -290,56 +287,7 @@ ISR(USART0_RXC_vect) {
   }
 
   if (in == '\n') {
-    if (cmd_state == CMD_STATE::NONE) {
-      if (get_prev_chars(buff, uart_data, 7) && !strcmp(uart_data, "chgaddr")) {
-        cmd_state = CMD_STATE::CMD_CHGADDR_WAITFOR;
-        D("enter new addr for device: ");
-      }
-      else if (get_prev_chars(buff, uart_data, 4) && !strcmp(uart_data, "addr")) {
-        cmd_state = CMD_STATE::CMD_ADDR_WAITFOR;
-        D("enter addr cmds are sent to: ");
-      }
-      // 1234[w|r]0b00000000
-      else if (get_prev_chars(buff, uart_data, 2) && !strcmp(uart_data, "cv")) {
-        cmd_state = CMD_STATE::CMD_CV_WAITFOR;
-        D("enter CV cmd <cv addr>[r|w]<cv value> (eg 121r0x05): ");
-      }
-      // 1234[w|r][0-7][0|1]
-      else if (get_prev_chars(buff, uart_data, 3) && !strcmp(uart_data, "cvb")) {
-        cmd_state = CMD_STATE::CMD_CVB_WAITFOR;
-        D("enter CV bit cmd <cv addr>[r|w]<bitpos><bitvalue> (eg 121r71): ");
-      }
-      else if (get_prev_chars(buff, uart_data, 4) && !strcmp(uart_data, "help")) {
-        cmd_state = CMD_STATE::SHOW_HELP;
-      }
-    }
-
-    else if (cmd_state == CMD_STATE::CMD_ADDR_WAITFOR) {
-      uint16_t addr = buff2int(buff);
-      eeprom_update_word(&ee_decoder_addr, addr);
-      decoder_addr = addr;
-      DF("address in use: %u (0x%04x)\n", decoder_addr, decoder_addr);
-      cmd_state = CMD_STATE::NONE;
-    }
-
-    else if (cmd_state == CMD_STATE::CMD_CV_WAITFOR) {
-      get_prev_chars(buff, uart_data, 20);
-      cmd_state = CMD_STATE::CMD_CV_PROCESS;
-    }
-
-    else if (cmd_state == CMD_STATE::CMD_CVB_WAITFOR) {
-      get_prev_chars(buff, uart_data, 20);
-      cmd_state = CMD_STATE::CMD_CVB_PROCESS;
-    }
-
-    else if (cmd_state == CMD_STATE::CMD_CHGADDR_WAITFOR) {
-      get_prev_chars(buff, uart_data, 20);
-      cmd_state = CMD_STATE::CMD_CHGADDR_PROCESS;
-    }
-
-    // clear ring buffer
-    buff_p = 0;
-    for (uint8_t ii=0; ii<8; ii++) buff[ii] = 0;
+    cmd_state = cmd_state == CMD_STATE::PROCESS_UART_DATA_WAITFOR ? CMD_STATE::PROCESS_UART_DATA : CMD_STATE::PROCESS_UART_CMD;
   }
 }
 
@@ -600,15 +548,18 @@ int main(void) {
   PORTB.OUT |= PIN6_bm | PIN7_bm; // PB6=PB7=1
 
   // debug pin for oscilloscope
-  /*
   pins_output(&PA7, 1);
   pins_set(&PA7, 1);
-  */
 
   uint8_t port_outputs = 0;
   uint8_t is_extended_mode = 0;
   PRG::Type_Prg_Cmd_Type prg_cmd_type = PRG::READ;
   PRG::Type_Prg_Mode prg_mode = PRG::SERVICE;
+
+  // show help on start
+  cmd_state = CMD_STATE::PROCESS_UART_CMD;
+  strncpy(buff, "help", 4);
+  buff_p = 4;
 
   timer_init();
 
@@ -646,12 +597,12 @@ int main(void) {
         break;
       case CMD_STATE::TOGGLE_PRG_CMD_TYPE:
         prg_cmd_type = prg_cmd_type == PRG::READ ? PRG::WRITE : PRG::READ;
-        DF("(%u) prg type: %s\n", CMD_STATE::TOGGLE_PRG_MODE, prg_cmd_type == PRG::READ ? "read" : "write");
+        DF("(%u) prg type: %s\n", CMD_STATE::TOGGLE_PRG_CMD_TYPE, prg_cmd_type == PRG::READ ? "read" : "write");
         cmd_state = CMD_STATE::NONE;
         break;
       case CMD_STATE::TOGGLE_PRG_MODE:
         prg_mode = prg_mode == PRG::OPS ? PRG::SERVICE : PRG::OPS;
-        DF("(%u) prg mode: %s\n", CMD_STATE::RESET, prg_mode == PRG::OPS ? "ops" : "service");
+        DF("(%u) prg mode: %s\n", CMD_STATE::TOGGLE_PRG_MODE, prg_mode == PRG::OPS ? "ops" : "service");
         cmd_state = CMD_STATE::NONE;
         break;
       case CMD_STATE::RESET:
@@ -667,19 +618,54 @@ int main(void) {
           for (uint8_t c=0; c<25; c++) {
             send_packet(packets, 2);
           }
+          DL("25 reset packets sent");
           cmd_state = CMD_STATE::NONE;
         }
         break;
-      case CMD_STATE::NONE:
+      case CMD_STATE::PROCESS_UART_CMD:
+        if (get_prev_chars(buff, uart_cmd, 4) && !strcmp(uart_cmd, "help")) {
+          DL("usage:");
+          DF("  %u : turn left\n", CMD_STATE::TURN_LEFT);
+          DF("  %u : turn right\n", CMD_STATE::TURN_RIGHT);
+          DF("  %u : %s|%s idle packets in between (toggle)\n", CMD_STATE::TOGGLE_IDLE, fill_with_idle ? OK("yes") : "yes", fill_with_idle ? "no": OK("no"));
+          DF("  %u : %s|%s mode (toggle)\n", CMD_STATE::TOGGLE_EXTENDED, is_extended_mode ? "basic" : OK("basic"), is_extended_mode ? OK("extended") : "extended");
+          DF("  %u : %s|%s prg type (toggle)\n", CMD_STATE::TOGGLE_PRG_CMD_TYPE, prg_cmd_type == PRG::READ ? OK("read") : "read", PRG::READ ? "write": OK("write"));
+          DF("  %u : %s|%s prg mode (toggle)\n", CMD_STATE::TOGGLE_PRG_MODE, prg_mode == PRG::OPS ? "service" : OK("service"), prg_mode == PRG::OPS ? OK("ops") : "ops");
+          DF("  %u : 25 reset packets\n", CMD_STATE::RESET);
+          DF("  saddr: " OK("%u/0x%03x") " address cmds are sent to\n", decoder_addr, decoder_addr);
+          DL("  caddr: change device addr");
+          DL("  cv  : read/write cv");
+          DL("  cvb : read/write cv bit");
+          DL("  help: show this help");
+          cmd_state = CMD_STATE::NONE;
+        }
+        else if (get_prev_chars(buff, uart_cmd, 5) && !strcmp(uart_cmd, "caddr")) {
+          D("new addr for device: ");
+          cmd_state = CMD_STATE::PROCESS_UART_DATA_WAITFOR;
+        }
+        else if (get_prev_chars(buff, uart_cmd, 5) && !strcmp(uart_cmd, "saddr")) {
+          D("new addr cmds are sent to: ");
+          cmd_state = CMD_STATE::PROCESS_UART_DATA_WAITFOR;
+        }
+        else if (get_prev_chars(buff, uart_cmd, 2) && !strcmp(uart_cmd, "cv")) {
+          D("<cv addr>[r|w]<cv value> (eg 121r0x05): ");
+          cmd_state = CMD_STATE::PROCESS_UART_DATA_WAITFOR;
+        }
+        else if (get_prev_chars(buff, uart_cmd, 3) && !strcmp(uart_cmd, "cvb")) {
+          D("<cv addr>[r|w]<bitpos><bitvalue> (eg 121r71): ");
+          cmd_state = CMD_STATE::PROCESS_UART_DATA_WAITFOR;
+        }
+        else {
+          cmd_state = CMD_STATE::NONE;
+        }
+        // clear ring buffer
+        buff_p = 0;
+        for (uint8_t ii=0; ii<20; ii++) buff[ii] = 0;
         break;
-      case CMD_STATE::CMD_ADDR_WAITFOR:
-      case CMD_STATE::CMD_CV_WAITFOR:
-      case CMD_STATE::CMD_CVB_WAITFOR:
-      case CMD_STATE::CMD_CHGADDR_WAITFOR:
-        // handled in ISR
-        break;
-      case CMD_STATE::CMD_CHGADDR_PROCESS:
-        {
+      case CMD_STATE::PROCESS_UART_DATA:
+        get_prev_chars(buff, uart_data, 20);
+        // process cmd with data
+        if (!strcmp(uart_cmd, "caddr")) {
           uint16_t addr = char2int(uart_data);
           // pause_buffer_processing();
           basic_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 121, addr & 0xff); // lsb
@@ -691,12 +677,15 @@ int main(void) {
           }
           basic_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 120, (addr >> 8) & 0xff, 1); // msb, skip intro reset packets
           // resume_buffer_processing();
-          DF("new addr: %u/0x%03x\n", addr, addr);
-          cmd_state = CMD_STATE::NONE;
+          DF("\nnew addr: %u/0x%03x\n", addr, addr);
         }
-        break;
-      case CMD_STATE::CMD_CV_PROCESS:
-        {
+        else if (!strcmp(uart_cmd, "saddr")) {
+          uint16_t addr = buff2int(uart_data);
+          eeprom_update_word(&ee_decoder_addr, addr);
+          decoder_addr = addr;
+          DF("address in use: %u (0x%04x)\n", decoder_addr, decoder_addr);
+        }
+        else if (!strcmp(uart_cmd, "cv")) {
           // uart_data = "121r0x05" cv121 compare with 0x05
           char cv_addr_char[5] = {0};
           uint8_t cv_addr_pos = 0;
@@ -719,12 +708,8 @@ int main(void) {
           uint8_t cv_value = char2int(cv_value_char);
           DF("%s cv#%u: 0x%02x\n", cmd_type == PRG::WRITE ? "write" : "read", cv_addr, cv_value);
           basic_accessory_prg(decoder_addr, prg_mode, cmd_type, cv_addr, cv_value);
-
-          cmd_state = CMD_STATE::NONE;
         }
-        break;
-      case CMD_STATE::CMD_CVB_PROCESS:
-        {
+        else if (!strcmp(uart_cmd, "cvb")) {
           // uart_data = "121r70" cv121 compare bit 7 with 0
           char cv_addr_char[5] = {0};
           uint8_t cv_addr_pos = 0;
@@ -747,25 +732,15 @@ int main(void) {
           uint16_t cv_addr = char2int(cv_addr_char);
           DF("%s cv#%u: bit %u, value %u\n", write == 1 ? "write" : "read", cv_addr, bit_addr, bit_value);
           basic_accessory_prg_bit(decoder_addr, prg_mode, cv_addr, write, bit_addr, bit_value);
-
-          cmd_state = CMD_STATE::NONE;
         }
-        break;
-      case CMD_STATE::SHOW_HELP:
-        DL("usage:");
-        DF("  %u : turn left\n", CMD_STATE::TURN_LEFT);
-        DF("  %u : turn right\n", CMD_STATE::TURN_RIGHT);
-        DF("  %u : %s|%s idle packets in between (toggle)\n", CMD_STATE::TOGGLE_IDLE, fill_with_idle ? OK("yes") : "yes", fill_with_idle ? "no": OK("no"));
-        DF("  %u : %s|%s mode (toggle)\n", CMD_STATE::TOGGLE_EXTENDED, is_extended_mode ? "basic" : OK("basic"), is_extended_mode ? OK("extended") : "extended");
-        DF("  %u : %s|%s prg type (toggle)\n", CMD_STATE::TOGGLE_PRG_CMD_TYPE, prg_cmd_type == PRG::READ ? OK("read") : "read", PRG::READ ? "write": OK("write"));
-        DF("  %u : %s|%s prg mode (toggle)\n", CMD_STATE::TOGGLE_PRG_MODE, prg_mode == PRG::OPS ? "service" : OK("service"), prg_mode == PRG::OPS ? OK("ops") : "ops");
-        DF("  %u : 25 reset packets\n", CMD_STATE::RESET);
-        DF("  addr: " OK("%u/0x%03x") " address cmds are sent to\n", decoder_addr, decoder_addr);
-        DL("  chgaddr: change device addr");
-        DL("  cv  : read/write cv");
-        DL("  cvb : read/write cv bit");
-        DL("  help: show this help");
+
+        uart_data[0] = '\0';
+        // clear ring buffer
+        buff_p = 0;
+        for (uint8_t ii=0; ii<20; ii++) buff[ii] = 0;
         cmd_state = CMD_STATE::NONE;
+        break;
+      default:
         break;
     }
   }
