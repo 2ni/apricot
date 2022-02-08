@@ -25,7 +25,6 @@ namespace CMD_STATE {
     TURN_RIGHT,
     TOGGLE_IDLE,
     TOGGLE_EXTENDED,
-    TOGGLE_PRG_CMD_TYPE,
     TOGGLE_PRG_MODE,
     RESET,
     PROCESS_UART_CMD,
@@ -280,7 +279,6 @@ ISR(USART0_RXC_vect) {
       case '0'+CMD_STATE::TURN_RIGHT: cmd_state = CMD_STATE::TURN_RIGHT; break;
       case '0'+CMD_STATE::TOGGLE_IDLE: cmd_state = CMD_STATE::TOGGLE_IDLE; break;
       case '0'+CMD_STATE::TOGGLE_EXTENDED: cmd_state = CMD_STATE::TOGGLE_EXTENDED; break;
-      case '0'+CMD_STATE::TOGGLE_PRG_CMD_TYPE: cmd_state = CMD_STATE::TOGGLE_PRG_CMD_TYPE; break;
       case '0'+CMD_STATE::TOGGLE_PRG_MODE: cmd_state = CMD_STATE::TOGGLE_PRG_MODE; break;
       case '0'+CMD_STATE::RESET: cmd_state = CMD_STATE::RESET; break;
     }
@@ -440,7 +438,7 @@ void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_C
   packets[index+2] = cv_data;
   send_packet(packets, num, mode);
   // write requires 2 similar packets while in ops mode (in real env)
-  if (mode == PRG::OPS && cmd_type == PRG::WRITE) send_packet(packets, num, mode);
+  if (mode == PRG::OPS && (cmd_type == PRG::WRITE || (PRG::BIT && cv_data & 0x10))) send_packet(packets, num, mode);
 
   // uart_arr("prg", packets, num);
   // activate (=send) newest buffer entries
@@ -553,7 +551,6 @@ int main(void) {
 
   uint8_t port_outputs = 0;
   uint8_t is_extended_mode = 0;
-  PRG::Type_Prg_Cmd_Type prg_cmd_type = PRG::READ;
   PRG::Type_Prg_Mode prg_mode = PRG::SERVICE;
 
   // show help on start
@@ -595,11 +592,6 @@ int main(void) {
         DF("(%u) mode: %s\n", CMD_STATE::TOGGLE_EXTENDED, is_extended_mode ? "extended" : "basic");
         cmd_state = CMD_STATE::NONE;
         break;
-      case CMD_STATE::TOGGLE_PRG_CMD_TYPE:
-        prg_cmd_type = prg_cmd_type == PRG::READ ? PRG::WRITE : PRG::READ;
-        DF("(%u) prg type: %s\n", CMD_STATE::TOGGLE_PRG_CMD_TYPE, prg_cmd_type == PRG::READ ? "read" : "write");
-        cmd_state = CMD_STATE::NONE;
-        break;
       case CMD_STATE::TOGGLE_PRG_MODE:
         prg_mode = prg_mode == PRG::OPS ? PRG::SERVICE : PRG::OPS;
         DF("(%u) prg mode: %s\n", CMD_STATE::TOGGLE_PRG_MODE, prg_mode == PRG::OPS ? "ops" : "service");
@@ -629,7 +621,6 @@ int main(void) {
           DF("  %u : turn right\n", CMD_STATE::TURN_RIGHT);
           DF("  %u : %s|%s idle packets in between (toggle)\n", CMD_STATE::TOGGLE_IDLE, fill_with_idle ? OK("yes") : "yes", fill_with_idle ? "no": OK("no"));
           DF("  %u : %s|%s mode (toggle)\n", CMD_STATE::TOGGLE_EXTENDED, is_extended_mode ? "basic" : OK("basic"), is_extended_mode ? OK("extended") : "extended");
-          DF("  %u : %s|%s prg type (toggle)\n", CMD_STATE::TOGGLE_PRG_CMD_TYPE, prg_cmd_type == PRG::READ ? OK("read") : "read", PRG::READ ? "write": OK("write"));
           DF("  %u : %s|%s prg mode (toggle)\n", CMD_STATE::TOGGLE_PRG_MODE, prg_mode == PRG::OPS ? "service" : OK("service"), prg_mode == PRG::OPS ? OK("ops") : "ops");
           DF("  %u : 25 reset packets\n", CMD_STATE::RESET);
           DF("  saddr: " OK("%u/0x%03x") " address cmds are sent to\n", decoder_addr, decoder_addr);
@@ -670,7 +661,7 @@ int main(void) {
           // pause_buffer_processing();
           basic_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 121, addr & 0xff); // lsb
           // 1 reset 7.772ms -> 14 packets
-          // wait 100ms filling with reset (=12.86670098 reset packets)
+          // wait 100ms filling with reset (=12.86670098 reset packets) as we can't read ack from decoder yet
           uint8_t packets[2] = {0};
           for (uint8_t i=0; i<13; i++) {
             send_packet(packets, 2);
