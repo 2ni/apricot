@@ -438,7 +438,7 @@ void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_C
   packets[index+2] = cv_data;
   send_packet(packets, num, mode);
   // write requires 2 similar packets while in ops mode (in real env)
-  if (mode == PRG::OPS && (cmd_type == PRG::WRITE || (PRG::BIT && cv_data & 0x10))) send_packet(packets, num, mode);
+  if (mode == PRG::OPS && (cmd_type == PRG::WRITE || (cmd_type == PRG::BIT && cv_data & 0x10))) send_packet(packets, num, mode);
 
   // uart_arr("prg", packets, num);
   // activate (=send) newest buffer entries
@@ -476,23 +476,42 @@ void extended_accessory(uint16_t addr, uint8_t output) {
  * cmd_type: PRG::READ, PRG::WRITE, (not yet supported: PRG::BIT)
  * addr is ignored if PRG::SERVICE
  */
-void extended_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_Cmd_Type cmd_type, uint8_t cv_addr, uint8_t cv_data) {
+void extended_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_Cmd_Type cmd_type, uint8_t cv_addr, uint8_t cv_data, uint8_t skip_resets = 0) {
   uint8_t packets[5] = {0};
   uint8_t index = 0;
+  uint8_t num = 3;
   uint8_t cmd_start = 0b0111<<4;
 
-  cv_addr -= 1; // 1-1024
+  // send reset packets 1st (only in service mode before 1st packet)
+  if (mode == PRG::SERVICE && !skip_resets) {
+    for (uint8_t c=0; c<25; c++) {
+      send_packet(packets, 2, mode);
+    }
+  }
+
   if (mode == PRG::OPS) {
     packets[0] = 0x80 | ((addr & 0xfc)>>2);
-    packets[1] = 0x88 | ((~addr & 0x700)>>4) | ((addr & 0x03)<<1);
+    packets[1] = 0x01 | ((~addr & 0x700)>>4) | ((addr & 0x03)<<1);
     index += 2;
+    num += 2;
     cmd_start = 0b1110<<4;
   }
 
+  cv_addr -= 1; // 1-1024
   packets[index] = cmd_start | (cmd_type<<2) | ((cv_addr & 0x300)>>8);
-  packets[index + 1] = 0xff & cv_addr;
-  packets[index + 2] = cv_data;
-  send_packet(packets, 5);
+  packets[index+1] = 0xff & cv_addr;
+  packets[index+2] = cv_data;
+  send_packet(packets, num, mode);
+
+  // write requires 2 similar packets while in ops mode (in real env)
+  if (mode == PRG::OPS && (cmd_type == PRG::WRITE || (cmd_type == PRG::BIT && cv_data & 0x10))) {
+    send_packet(packets, num, mode);
+  }
+}
+
+void extended_accessory_prg_bit(uint16_t addr, PRG::Type_Prg_Mode mode, uint16_t cv_addr, uint8_t write, uint8_t bit_addr, uint8_t bit_value) {
+  uint8_t cv_data = 0xe0 | (write ? 0x10 : 0x00) | (bit_value ? 0x08 : 0x00) | (0x07 & bit_addr);
+  extended_accessory_prg(addr, mode, PRG::BIT, cv_addr, cv_data);
 }
 
 /*
@@ -658,16 +677,26 @@ int main(void) {
         // process cmd with data
         if (!strcmp(uart_cmd, "caddr")) {
           uint16_t addr = char2int(uart_data);
-          // pause_buffer_processing();
-          basic_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 121, addr & 0xff); // lsb
-          // 1 reset 7.772ms -> 14 packets
-          // wait 100ms filling with reset (=12.86670098 reset packets) as we can't read ack from decoder yet
-          uint8_t packets[2] = {0};
-          for (uint8_t i=0; i<13; i++) {
-            send_packet(packets, 2);
+          // lsb
+          if (is_extended_mode) {
+            extended_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 121, addr & 0xff);
+          } else {
+            basic_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 121, addr & 0xff);
           }
-          basic_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 120, (addr >> 8) & 0xff, 1); // msb, skip intro reset packets
-          // resume_buffer_processing();
+          if (prg_mode == PRG::SERVICE) {
+            // 1 reset 7.772ms -> 14 packets
+            // wait 100ms filling with reset (=12.86670098 reset packets) as we can't read ack from decoder yet
+            uint8_t packets[2] = {0};
+            for (uint8_t i=0; i<13; i++) {
+              send_packet(packets, 2);
+            }
+          }
+          // msb (skip intro reset packets in service mode, none in ops mode anyways)
+          if (is_extended_mode) {
+            extended_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 120, (addr >> 8) & 0xff);
+          } else {
+            basic_accessory_prg(decoder_addr, prg_mode, PRG::WRITE, 120, (addr >> 8) & 0xff, 1);
+          }
           DF("\nnew addr: %u/0x%03x\n", addr, addr);
         }
         else if (!strcmp(uart_cmd, "saddr")) {
@@ -698,7 +727,11 @@ int main(void) {
           uint16_t cv_addr = char2int(cv_addr_char);
           uint8_t cv_value = char2int(cv_value_char);
           DF("%s cv#%u: 0x%02x\n", cmd_type == PRG::WRITE ? "write" : "read", cv_addr, cv_value);
-          basic_accessory_prg(decoder_addr, prg_mode, cmd_type, cv_addr, cv_value);
+          if (is_extended_mode) {
+            extended_accessory_prg(decoder_addr, prg_mode, cmd_type, cv_addr, cv_value);
+          } else {
+            basic_accessory_prg(decoder_addr, prg_mode, cmd_type, cv_addr, cv_value);
+          }
         }
         else if (!strcmp(uart_cmd, "cvb")) {
           // uart_data = "121r70" cv121 compare bit 7 with 0
@@ -722,7 +755,11 @@ int main(void) {
           }
           uint16_t cv_addr = char2int(cv_addr_char);
           DF("%s cv#%u: bit %u, value %u\n", write == 1 ? "write" : "read", cv_addr, bit_addr, bit_value);
-          basic_accessory_prg_bit(decoder_addr, prg_mode, cv_addr, write, bit_addr, bit_value);
+          if (is_extended_mode) {
+            extended_accessory_prg_bit(decoder_addr, prg_mode, cv_addr, write, bit_addr, bit_value);
+          } else {
+            basic_accessory_prg_bit(decoder_addr, prg_mode, cv_addr, write, bit_addr, bit_value);
+          }
         }
 
         uart_data[0] = '\0';
