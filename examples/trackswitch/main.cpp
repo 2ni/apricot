@@ -32,6 +32,14 @@ namespace PRG {
   } Type_Prg_Mode;
 }
 
+namespace ADDR {
+  typedef enum {
+    NONE,
+    BASIC,
+    EXTENDED,
+  } Type_Addr_Mode;
+}
+
 namespace CFG {
   typedef struct {
     uint8_t CV120 = 0x01; // MSB address 261, 0x105
@@ -47,6 +55,8 @@ uint16_t get_cur_addr() {
   return (uint16_t)(cfg.CV120 << 8 | cfg.CV121);
 }
 
+uint16_t last_xor = 0;
+
 pins_t INA1 = PA7;
 pins_t INA2 = PA6;
 pins_t INB1 = PB2;
@@ -57,7 +67,7 @@ pins_t DCC = PA5;
 
 volatile int16_t direction = 0;
 volatile uint8_t limit_reached = 0;
-uint8_t speed = 5;
+uint8_t speed = 2;
 
 volatile uint8_t wait_for_edge_2 = 0;
 uint8_t dcc_bit = 0;
@@ -143,8 +153,6 @@ void deactivate_service_prg() {
   in_service_prg = 0;
   // pins_set(&pins_led, 0);
   ts_last_prg_cmd = 0;
-  address_tmp = 0;
-  address_last_cv = 0;
   // DL("prg off");
 }
 
@@ -217,7 +225,6 @@ void cv_bitwise(PRG::Type_Prg_Mode mode, uint8_t bit_write, uint8_t *cv, uint8_t
  *     K  : 1=write, 0=read
  *     D  : bit value to check/write
  *
- * address_tmp is only cleared if prg mode is left
  */
 void handle_cv(PRG::Type_Prg_Mode mode, uint8_t *packets, uint8_t *packets_count) {
   if ((mode == PRG::SERVICE && !is_service_cmd(packets, packets_count)) || (mode == PRG::OPS && (packets[2] & 0xf0) != 0xe0)) {
@@ -242,49 +249,52 @@ void handle_cv(PRG::Type_Prg_Mode mode, uint8_t *packets, uint8_t *packets_count
   }
 
   // cv#120: MSB, cv#121: LSB
-  if (cv == 120 || cv == 121) {
-    switch (cmd_type) {
-      case 0x01: // read/verify
-        cv_bytewise_read(mode, cv == 121 ? &cfg.CV121 : &cfg.CV120, value);
-        break;
-      // write
-      case 0x03:
-        // start consuming >+60mA for 5-7ms
-        // in service mode we can directly set the msb or lsb as no address is used to communicate
-        if (mode == PRG::SERVICE) {
-          cv_bytewise_write(mode, cv == 120 ? &cfg.CV120 : &cfg.CV121, value);
-          // DF("new address: %u/0x%03x\n", get_cur_addr(), get_cur_addr());
-        }
+  switch (cv) {
+    case 120:
+    case 121:
+      switch (cmd_type) {
+        case 0x01: // read/verify
+          cv_bytewise_read(mode, cv == 121 ? &cfg.CV121 : &cfg.CV120, value);
+          break;
+        // write
+        case 0x03:
+          // start consuming >+60mA for 5-7ms
+          // in service mode we can directly set the msb or lsb as no address is used to communicate
+          if (mode == PRG::SERVICE) {
+            cv_bytewise_write(mode, cv == 120 ? &cfg.CV120 : &cfg.CV121, value);
+            // DF("new address: %u/0x%03x\n", get_cur_addr(), get_cur_addr());
+          }
 
-        // TODO: write only after 2nd packet
-        if (mode == PRG::OPS && ((address_last_cv == 121 && cv == 120) || (address_last_cv == 120 && cv == 121))) {
-          cfg.CV121 = cv == 121 ? value : address_tmp;
-          cfg.CV120 = cv == 120 ? value : address_tmp;
-          eeprom_update_block(&cfg, &ee_cfg, sizeof(CFG::Type_CVs));
-          address_tmp = 0;
-          address_last_cv = 0;
-          DF("new address: %u/0x%03x\n", get_cur_addr(), get_cur_addr());
-        } else {
-          address_tmp = value;
-          address_last_cv = cv;
-        }
-        break;
-      case 0x02:
-        break;
-    }
-  } else if (cv == 29) {
-    switch (cmd_type) {
-      case 0x01: // read/verify
-        cv_bytewise_read(mode, &cfg.CV29, value);
-        break;
-      case 0x03: // write
-        // TODO write only after 2nd packet in OPS mode
-        cv_bytewise_write(mode, &cfg.CV29, value);
-        break;
-      case 0x02: // bitwise
-        cv_bitwise(mode, bit_write, &cfg.CV29, bit_addr, value);
-        break;
-    }
+          if (mode == PRG::OPS && ((address_last_cv == 121 && cv == 120) || (address_last_cv == 120 && cv == 121))) {
+            cfg.CV121 = cv == 121 ? value : address_tmp;
+            cfg.CV120 = cv == 120 ? value : address_tmp;
+            eeprom_update_block(&cfg, &ee_cfg, sizeof(CFG::Type_CVs));
+            address_tmp = 0;
+            address_last_cv = 0;
+            // DF("new address: %u/0x%03x\n", get_cur_addr(), get_cur_addr());
+          } else {
+            last_xor = 0;
+            address_tmp = value;
+            address_last_cv = cv;
+          }
+          break;
+        case 0x02:
+          break;
+      }
+      break;
+    case 29:
+      switch (cmd_type) {
+        case 0x01: // read/verify
+          cv_bytewise_read(mode, &cfg.CV29, value);
+          break;
+        case 0x03: // write
+          cv_bytewise_write(mode, &cfg.CV29, value);
+          break;
+        case 0x02: // bitwise
+          cv_bitwise(mode, bit_write, &cfg.CV29, bit_addr, value);
+          break;
+      }
+      break;
   }
 }
 
@@ -348,10 +358,15 @@ int main(void) {
     stepper.loop();
 
     // handle dcc
+    // TODO?
+    // if a eeprom_update is needed, it takes too much time and bits of the next packet get lost
+    // usually this is a idle packet and therefore no problem
+    // possible solution: use a ring buffer for incoming bits and process them
+    // could potentially lead to other issues, eg ack too late, ...
     if (wait_for_edge_2 == 2) {
       wait_for_edge_2 = 0;
       if (TCA0.SINGLE.CNT > 1450) {
-        DL("*");
+        DF("* %u\n", TCA0.SINGLE.CNT);
         state_packet = DCC_STATE::WAITPREAMBLE;
         preamble_count = 0;
         continue;
@@ -398,19 +413,35 @@ int main(void) {
               uart_arr("err", dcc_packets, dcc_packets_count);
             }
             if (!error) {
+              ADDR::Type_Addr_Mode addr_mode = ADDR::NONE;
+              if (dcc_packets[0] >= 128 && dcc_packets[0] <= 191 && (dcc_packets[1] & 0x80)) addr_mode = ADDR::BASIC;
+              else if (dcc_packets[0] >= 128 && dcc_packets[0] <= 191 && (dcc_packets[1] & 0x89) == 0x01) addr_mode = ADDR::EXTENDED;
+              // extended: {preamble} 0 10AAAAAA 0 0AAA0AA1 0 1110CCVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
+              // basic:    {preamble} 0 10AAAAAA 0 1AAA1DD0 0 1110CCVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
+              uint8_t is_prg_ops_cmd = dcc_packets_count == 6 && (dcc_packets[2] & 0xf0) == 0xe0 && (
+                  (addr_mode == ADDR::BASIC && (dcc_packets[1] & 0x89) == 0x88) ||
+                  (addr_mode == ADDR::EXTENDED && (dcc_packets[1] & 0x89) == 0x01)
+                  );
               uint8_t is_reset_packet = dcc_packets_count == 3 && dcc_packets[0] == 0x00 && dcc_packets[1] == 0x00;
 
-              // reset reset_cout if not reached service mode
+              // reset reset_count if not reached service mode
               if (reset_count && !is_reset_packet) reset_count = 0;
 
+              // reset check for 2nd prg cmd in ops mode if not same
+              if (last_xor && !is_prg_ops_cmd) last_xor = 0;
+
+              // reset temp address if no prg cmd
+              if (address_last_cv && !is_prg_ops_cmd) address_last_cv = 0;
+
               // TODO and if not reset packet
+              /*
               if (in_service_prg && !is_service_cmd(dcc_packets, &dcc_packets_count)) {
-                // deactivate_service_prg();
+                deactivate_service_prg();
               }
+              */
 
               // sniffing all packets except idle / reset
-              // idle:  ff 00 ff
-              // reset: 00 00 00
+              // idle:  ff 00 ff, reset: 00 00 00
               /*
               if (!(dcc_packets_count == 3 && (
                   (dcc_packets[0] == 0xff && dcc_packets[1] == 0x00 && dcc_packets[2] == 0xff)
@@ -420,10 +451,8 @@ int main(void) {
               }
               */
 
-
               // reset packet
-              // go into service mode if >= 25 reset packets received
-              // stay in service mode as long as reset packets sent
+              // go into service mode if >= 25 reset packets received, stay as long as reset packets sent
               if (is_reset_packet) {
                 if (!in_service_prg) {
                   reset_count++;
@@ -437,10 +466,6 @@ int main(void) {
               }
               else if (in_service_prg) {
                 handle_cv(PRG::SERVICE, dcc_packets, &dcc_packets_count);
-              }
-
-              // idle packet
-              else if (dcc_packets[0] == 0xff) {
               }
               // multifunction decoder 14bit
               // {preamble} 0 11AAAAAA 0 AAAAAAAA 0 CCCDDDDD 0 EEEEEEEE 1
@@ -458,42 +483,52 @@ int main(void) {
               // RCN216: service mode ack: 5-7ms +60mA power consumption after reception of every packet
               // RCN216: leave prg modus if normal packet or 30ms since reset/cv access packet
               // beim Programmiermodus mit isoliertem Gleisabschnitt: entsprechenden Pakete beginnen direkt mit den Befehlsbytes ohne Adresse
-              else if (dcc_packets[0] >= 128 && dcc_packets[0] <= 191 && (dcc_packets[1] & 0x80)) {
-                // cv access (ops mode): 10AAAAAA 0 1AAA1DD0 0 1110CCVV 0 VVVVVVVV 0 DDDDDDDD
-                if (dcc_packets_count > 3 && (dcc_packets[1] & 0x89) == 0x88 && (dcc_packets[2] & 0xf0) == 0xe0) {
-                  handle_cv(PRG::OPS, dcc_packets, &dcc_packets_count);
-                }
-                else {
-                  // basic accessory 11bit MADA (https://wiki.rocrail.net/doku.php?id=addressing:accessory-pg-de)
-                  uint8_t activation = (dcc_packets[1] & 0x08)>>3; // "C" ("activated/deactivated")
-                  uint8_t port = ((dcc_packets[1] & 0x06)>>1) + 1; // "DD"
-                  uint16_t module_addr = (dcc_packets[0] & 0x3f) | ((uint16_t)((~dcc_packets[1] & 0x70))<<2);
-                  uint16_t addr = (module_addr - 1) * 4 + port;
-                  uint8_t output = dcc_packets[1] & 0x01; // "R" 0=left, 1=right ("which coil should be de/activated")
-                  DF("basic: %u (0x%04x), activation: %u, output: %u\n", addr, addr, activation, output);
-                  if (!(cfg.CV29 & (1<<5)) && addr == get_cur_addr()) {
+              else if (addr_mode == ADDR::BASIC) {
+                // basic accessory 11bit MADA (https://wiki.rocrail.net/doku.php?id=addressing:accessory-pg-de)
+                // uint8_t activation = (dcc_packets[1] & 0x08)>>3; // "C" ("activated/deactivated")
+                uint8_t port = ((dcc_packets[1] & 0x06)>>1) + 1; // "DD"
+                uint16_t module_addr = (dcc_packets[0] & 0x3f) | ((uint16_t)((~dcc_packets[1] & 0x70))<<2);
+                uint16_t addr = (module_addr - 1) * 4 + port;
+                uint8_t output = dcc_packets[1] & 0x01; // "R" 0=left, 1=right ("which coil should be de/activated")
+                // DF("basic: %u (0x%04x), activation: %u, output: %u\n", addr, addr, activation, output);
+                if (!(cfg.CV29 & (1<<5)) && addr == get_cur_addr()) {
+                  // cv access (ops mode): 10AAAAAA 0 1AAA1DD0 0 1110CCVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
+                  if (is_prg_ops_cmd) {
+                    if (!last_xor) last_xor = dcc_packets[5];
+                    else if (last_xor == dcc_packets[5]) {
+                      handle_cv(PRG::OPS, dcc_packets, &dcc_packets_count);
+                    }
+                  } else {
                     move_turnout(output & 0x01);
                   }
-
-                  // 11bit (output=0 -> left, output=1 -> right)
-                  /*
-                  addr = ((dcc_packets[0] & 0x3f)<<2) | ((uint16_t)((~dcc_packets[1] & 0x70))<<4) | ((dcc_packets[1] & 0x06)>>1);
-                  activation = (dcc_packets[1] & 0x08)>>3;
-                  output = dcc_packets[1] & 0x01;
-                  DF("basic (11bit): %u (0x%04x), activation: %u, output: %u\n", addr, addr, activation, output);
-                  */
                 }
+
+                // 11bit (output=0 -> left, output=1 -> right)
+                /*
+                addr = ((dcc_packets[0] & 0x3f)<<2) | ((uint16_t)((~dcc_packets[1] & 0x70))<<4) | ((dcc_packets[1] & 0x06)>>1);
+                activation = (dcc_packets[1] & 0x08)>>3;
+                output = dcc_packets[1] & 0x01;
+                DF("basic (11bit): %u (0x%04x), activation: %u, output: %u\n", addr, addr, activation, output);
+                */
+              }
               // extended accessory decoder 11bit  {preamble} 0 10AAAAAA 0 0AAA0AA1 0 000XXXXX 0 EEEEEEEE 1
               // broadcast command                 {preamble} 0 10111111 0 00000111 0 000XXXXX 0 EEEEEEEE 1
               // emergency stop                    {preamble} 0 10111111 0 00000111 0 00000000 0 EEEEEEEE 1
               // cv access (ops mode)              {preamble} 0 10AAAAAA 0 0AAA0AA1 0 1110CCVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
               // of help: https://www.iascaled.com/blog/high-current-dcc-accessory-decoder/
               //          https://dccwiki.com/Configuration_Variable
-              } else if (dcc_packets[0] >= 128 && dcc_packets[0] <= 191 && (dcc_packets[1] & 0x89) == 0x01) {
+              else if (addr_mode == ADDR::EXTENDED) {
                 uint16_t addr = ((dcc_packets[0] & 0x3f)<<2) | ((uint16_t)((~dcc_packets[1] & 0x70))<<4) | ((dcc_packets[1] & 0x06)>>1);
-                DF("extended: (11bit): %u (0x%04x), data: 0x%02x\n", addr, addr, dcc_packets[2]);
+                // DF("extended: (11bit): %u (0x%04x), data: 0x%02x\n", addr, addr, dcc_packets[2]);
                 if ((cfg.CV29 & (1<<5)) && addr == get_cur_addr()) {
-                  move_turnout(dcc_packets[2] & 0x01);
+                  if (is_prg_ops_cmd) {
+                    if (!last_xor) last_xor = dcc_packets[5];
+                    else if (last_xor == dcc_packets[5]) {
+                      handle_cv(PRG::OPS, dcc_packets, &dcc_packets_count);
+                    }
+                  } else {
+                    move_turnout(dcc_packets[2] & 0x01);
+                  }
                 }
               }
             }
