@@ -300,6 +300,21 @@ void handle_cv(PRG::Type_Prg_Mode mode, uint8_t *packets, uint8_t *packets_count
   }
 }
 
+/*
+ * use macro as function seems to be too slow in main loop
+ * a function leads ot packet errors
+ */
+#define STEPPER_REACHED_POS(break_when_reached) { \
+  if (limit_reached || (ts_stepper && (clock.current_tick - ts_stepper) > 4096)) { \
+    ts_stepper = 0; \
+    stepper.stop(); \
+    stepper.move(0, speed); \
+    pins_set(&pins_led, 0); \
+    limit_reached = 0; \
+    if (break_when_reached) break; \
+  } \
+}
+
 
 /*
  * + -> right move
@@ -343,24 +358,21 @@ int main(void) {
 
   // set to left position if unknown at start
   if (pins_get(&LIMIT1) && pins_get(&LIMIT2)) {
+    ts_stepper = clock.current_tick;
     DL("move to home");
     stepper.move(-1000, speed);
-    while (pins_get(&LIMIT1)) {
+    ts_stepper = clock.current_tick;
+    while (1) {
+      STEPPER_REACHED_POS(1);
       stepper.loop();
     }
   }
 
+  DL("waiting for signal...");
   while (1) {
     // stop stepper on limit or max duration for stepper reached (1s/(8/32768))
-    if (limit_reached || (ts_stepper && (clock.current_tick - ts_stepper) > 4096)) {
-      ts_stepper = 0;
-      stepper.stop();
-      stepper.move(0, speed);
-      pins_set(&pins_led, 0);
-      limit_reached = 0;
-    }
-
     stepper.loop();
+    STEPPER_REACHED_POS(0);
 
     // handle dcc
     // TODO?
