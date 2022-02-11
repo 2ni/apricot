@@ -75,6 +75,7 @@ volatile DCC_STATE::Type_State state_packet = DCC_STATE::WAITPREAMBLE;
 uint8_t in_service_prg = 0;
 uint32_t ts_ack_start = 0;
 uint32_t ts_last_prg_cmd = 0;
+uint32_t ts_stepper = 0;
 uint8_t address_tmp = 0;
 uint8_t address_last_cv = 0; // 120 if MSB set, 121 if LSB set (according to CV addr)
 uint8_t reset_count = 0;
@@ -130,6 +131,7 @@ void init_timer() {
 }
 
 void move_turnout(uint8_t position) {
+  ts_stepper = clock.current_tick;
   if (position == 0x01 && pins_get(&LIMIT2) != 0) {
     pins_set(&pins_led, 1);
     stepper.move(1000, speed);
@@ -349,12 +351,15 @@ int main(void) {
   }
 
   while (1) {
-    // stop stepper on limit
-    if (limit_reached) {
+    // stop stepper on limit or max duration for stepper reached (1s/(8/32768))
+    if (limit_reached || (ts_stepper && (clock.current_tick - ts_stepper) > 4096)) {
+      ts_stepper = 0;
       stepper.stop();
+      stepper.move(0, speed);
       pins_set(&pins_led, 0);
       limit_reached = 0;
     }
+
     stepper.loop();
 
     // handle dcc
