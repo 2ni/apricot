@@ -1,6 +1,7 @@
 #include <util/delay.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/pgmspace.h>
 #include "uart.h"
 #include "mcu.h"
 #include "pins.h"
@@ -11,11 +12,6 @@
  * PA6: ir output
  *
  *
- * RAV231:
- * v+: 7a 85 1a e5
- * v-: 7a 85 1b e4
- * power on: 7a 85 1d e2
- * power off: 7a 85 1e e1
  */
 namespace FORMAT {
   typedef enum {
@@ -34,13 +30,40 @@ volatile uint8_t cmd_in_pos = 0;
 volatile uint8_t data_ready = 0;
 volatile uint8_t data_sent = 0;
 
-uint8_t cmd_out[4] = {0x86, 0x6b, 0x01, 0xfe};
-volatile FORMAT::Type_Format edge_out = FORMAT::NONE;
+ /*
+ * RAV231:
+ * v+: 7a 85 1a e5
+ * v-: 7a 85 1b e4
+ * power on: 7a 85 1d e2
+ * power off: 7a 85 1e e1
+ */
+const uint8_t commands[5][4] PROGMEM = {
+  {0x86, 0x6b, 0x01, 0xfe}, // "1" vitaaudio
+  {0x7a, 0x85, 0x1d, 0xe2}, // "power on" rav231
+  {0x7a, 0x85, 0x1e, 0xe1}, // "power off" rav231
+  {0x7a, 0x85, 0x1a, 0xe5}, // "vol up" rav231
+  {0x7a, 0x85, 0x1b, 0xe4}  // "vol down" rav231
+};
+
+namespace CMD {
+  typedef enum {
+    ONE,
+    PWR_ON,
+    PWR_OFF,
+    VOL_UP,
+    VOL_DOWN,
+  } Type_Cmd;
+}
+CMD::Type_Cmd last_cmd = CMD::PWR_OFF;
+
+uint8_t buff_out[4] = {0};
+volatile uint8_t buff_out_pos = 0;
+volatile uint8_t buff_out_bit_pos = 0;
+volatile uint8_t buff_cur_bit = 0;
 volatile uint16_t cmd_out_cnt = 0;
 volatile uint16_t cmd_out_rep_cnt = 0;
-volatile uint8_t cur_bit = 0;
-volatile uint8_t cmd_out_pos = 0;
-volatile uint8_t cmd_out_bit_pos = 0;
+
+volatile FORMAT::Type_Format edge_out = FORMAT::NONE;
 
 volatile FORMAT::Type_Format format = FORMAT::NONE;
 
@@ -62,6 +85,7 @@ ISR(TCA0_OVF_vect) {
   TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
   TCA0.SINGLE.CTRLA &= ~TCA_SINGLE_ENABLE_bm;
   reset();
+  format = FORMAT::NONE;
   DL("ovf");
 }
 
@@ -156,9 +180,11 @@ ISR(TCB0_INT_vect) {
 
   switch (edge_out) {
     case FORMAT::NEC_FIRST:
+      if (cmd_out_cnt == 0) cmd_out_rep_cnt = 0;
       if (cmd_out_cnt < 682) PORTA.OUTTGL = PIN6_bm; // 9ms
       else {
         cmd_out_cnt = 0;
+        PORTA.OUT |= PIN6_bm;
         edge_out = FORMAT::NEC;
       }
       break;
@@ -172,31 +198,44 @@ ISR(TCB0_INT_vect) {
       if (cmd_out_cnt <= 42) PORTA.OUTTGL = PIN6_bm;
       else {
         cmd_out_cnt = 0;
+        PORTA.OUT |= PIN6_bm;
         edge_out = FORMAT::BIT_SECOND;
       }
       break;
     case FORMAT::BIT_SECOND:
-      if (cmd_out_pos == 4 && cmd_out_bit_pos == 1) {
-        cmd_out_pos = 0;
-        edge_out = FORMAT::NONE;
+      // we're done (last is just a half first bit)
+      if (buff_out_pos == 4 && buff_out_bit_pos == 1) {
+        buff_out_pos = 0;
+        buff_out_bit_pos = 0;
+        edge_out = FORMAT::REPEAT;
+        cmd_out_cnt = 1000;
         data_sent = 1;
       }
       else if (cmd_out_cnt == 1) {
-        cur_bit = (cmd_out[cmd_out_pos] >> cmd_out_bit_pos) & 0x01;
-        if (++cmd_out_bit_pos == 8) {
-          cmd_out_bit_pos = 0;
-          cmd_out_pos++;
+        buff_cur_bit = (buff_out[buff_out_pos] >> buff_out_bit_pos) & 0x01;
+        if (++buff_out_bit_pos == 8) {
+          buff_out_bit_pos = 0;
+          buff_out_pos++;
         }
       }
-      else if ((cur_bit && cmd_out_cnt >= 127) || (!cur_bit && cmd_out_cnt >= 43)) { // 1 -> wait for 1675us, 0-> wait for 562us
+      else if ((buff_cur_bit && cmd_out_cnt >= 127) || (!buff_cur_bit && cmd_out_cnt >= 43)) { // 1 -> wait for 1675us, 0-> wait for 562us
         edge_out = FORMAT::BIT_FIRST;
         cmd_out_cnt = 0;
+        PORTA.OUT |= PIN6_bm;
       }
+      break;
+    case FORMAT::REPEAT:
+      if (cmd_out_rep_cnt == 8333) {
+        cmd_out_rep_cnt = 0;
+        cmd_out_cnt = 0;
+      }
+      if (cmd_out_cnt < 682 || (cmd_out_cnt > 852 && cmd_out_cnt < 895)) PORTA.OUTTGL = PIN6_bm; // 9ms
       break;
     default:
       break;
   }
   cmd_out_cnt++;
+  cmd_out_rep_cnt++;
 }
 
 void init_timer() {
@@ -211,6 +250,19 @@ void init_timer() {
   TCB0.INTCTRL = TCB_CAPT_bm;
 }
 
+void send_cmd(CMD::Type_Cmd cmd) {
+  // load command to output buffer
+  DF("sending: %s\n", cmd == CMD::PWR_ON ? "pwr on" : (cmd == CMD::PWR_OFF ? "pwr off" : (cmd == CMD::VOL_UP ? "vol up" : (cmd == CMD::VOL_DOWN ? "vol down" : "-"))));
+  for (uint8_t i=0; i<4; i++) {
+    buff_out[i] = pgm_read_byte(&(commands[cmd][i]));
+  }
+  cmd_out_cnt = 0;
+  cmd_out_rep_cnt = 0;
+  edge_out = FORMAT::NEC_FIRST;
+  TCB0.CNT = 0;
+  TCB0.CTRLA |= TCB_ENABLE_bm;
+}
+
 int main(void) {
   mcu_init();
   pins_output(&PA7, 0); // ir signal input
@@ -221,21 +273,41 @@ int main(void) {
   PORTA.OUT |= PIN6_bm;
   pins_set(&PA6, 1);
 
-  init_timer();
+  // button inputs
+  PORTC.DIR &= ~(PIN5_bm | PIN4_bm | PIN3_bm);
+  PORTC.PIN5CTRL |= PORT_PULLUPEN_bm;
+  PORTC.PIN4CTRL |= PORT_PULLUPEN_bm;
+  PORTC.PIN3CTRL |= PORT_PULLUPEN_bm;
 
-  edge_out = FORMAT::NEC_FIRST;
-  TCB0.CTRLA |= TCB_ENABLE_bm;
+  _delay_ms(1);
+  init_timer();
 
   while (1) {
     if (data_ready) {
       data_ready = 0;
-      uart_arr("cmd_i", cmd_in, 4);
+      uart_arr("in", cmd_in, 4);
     }
 
     if (data_sent) {
       data_sent = 0;
+      uart_arr("out", buff_out, 4);
+    }
+
+    // turn led on/off if pressed/released (pressed = 0)
+    if (!(PORTB.IN & PIN5_bm) && (~PORTC.IN & (PIN5_bm | PIN4_bm | PIN3_bm))) {
+      if (~PORTC.IN & PIN3_bm) {
+        last_cmd = last_cmd == CMD::PWR_ON ? CMD::PWR_OFF : CMD::PWR_ON;
+        send_cmd(last_cmd);
+      }
+      else if (~PORTC.IN & PIN4_bm) send_cmd(CMD::VOL_UP);
+      else if (~PORTC.IN & PIN5_bm) send_cmd(CMD::VOL_DOWN);
+
+      PORTB.OUT |= PIN5_bm;
+    }
+    else if ((PORTB.IN & PIN5_bm) && (PORTC.IN & (PIN5_bm | PIN4_bm | PIN3_bm)) == (PIN5_bm | PIN4_bm | PIN3_bm)) {
       TCB0.CTRLA &= ~TCB_ENABLE_bm;
-      uart_arr("cmd_o", cmd_out, 4);
+
+      PORTB.OUT &= ~PIN5_bm;
     }
   }
 }
