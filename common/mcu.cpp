@@ -5,7 +5,7 @@
 
 CLOCK clock;
 
-void mcu_init(uint8_t enable_rx) {
+void mcu_init(uint8_t enable_rx, uint8_t enable_clock) {
   // set prescaler to 2 for 10MHz which is suitable for 3.3v
   _PROTECTED_WRITE(CLKCTRL.MCLKCTRLB, CLKCTRL_PDIV_2X_gc | CLKCTRL_PEN_bm);
 
@@ -26,7 +26,9 @@ void mcu_init(uint8_t enable_rx) {
   SLPCTRL.CTRLA = (SLPCTRL_SMODE_STDBY_gc | SLPCTRL_SEN_bm);
 
   // start rtc
-  clock.init();
+  if (enable_clock) {
+    clock.init();
+  }
 
   // init uart for debugging
   uart_init(enable_rx);

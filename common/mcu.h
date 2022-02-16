@@ -6,7 +6,7 @@
 
 extern CLOCK clock;
 
-void mcu_init(uint8_t enable_rx = 0);
+void mcu_init(uint8_t enable_rx = 0, uint8_t enable_clock = 1);
 uint16_t get_vin();
 uint16_t get_vcc_mcu();
 
