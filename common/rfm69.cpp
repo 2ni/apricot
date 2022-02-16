@@ -11,6 +11,16 @@
 RFM69* RFM69::rfm69_ptr;
 
 // TEST defined in Makefile of tests/
+/*
+ * set up the isr in the main code to avoid conflicts
+ * if we want to use interrupts on the same port for
+ * other purposes
+ * eg
+ * ISR(PORTC_PORT_vect) {
+ *   rf.isr();
+ * }
+ */
+/*
 #ifndef TEST
 ISR(PORTC_PORT_vect) {
   // D("*");
@@ -18,6 +28,7 @@ ISR(PORTC_PORT_vect) {
   RFM69::rfm69_ptr->pin_interrupt.port->INTFLAGS |= (1<<RFM69::rfm69_ptr->pin_interrupt.pin); // clear interrupt flag
 }
 #endif
+*/
 
 RFM69::RFM69() {
   this->init_vars(PC3, PC4);

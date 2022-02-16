@@ -1,5 +1,6 @@
 #include <util/delay.h>
 #include <string.h>
+#include <avr/interrupt.h>
 
 #include "pins.h"
 #include "uart.h"
@@ -35,6 +36,15 @@ namespace TYPE_DOWNLOAD {
 
 RFM69WRAPPER rf;
 HUMIDITYSENSOR sensor(&PA5, &PA6, &PA3);
+
+/*
+ * this is important
+ * ISR is not part of the library to avoid isr conflict
+ * if we want to use other interrupts on the same port
+ */
+ISR(PORTC_PORT_vect) {
+  rf.isr();
+}
 
 int main(void) {
   mcu_init();

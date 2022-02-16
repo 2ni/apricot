@@ -11,6 +11,18 @@
 RFM69WRAPPER::RFM69WRAPPER() {
 }
 
+/*
+ * include this function in the isr
+ * eg
+ * ISR(PORTC_PORT_vect) {
+ *   rf.isr();
+ * }
+ */
+void RFM69WRAPPER::isr() {
+  this->rfm69.isr = 1;
+  this->rfm69.pin_interrupt.port->INTFLAGS |= (1<<this->rfm69.pin_interrupt.pin); // clear interrupt flag
+}
+
 uint8_t RFM69WRAPPER::init(uint32_t gateway_id, uint8_t network_id) {
   this->gateway_id = gateway_id;
   this->rssi_limit_reached = 0;

@@ -21,6 +21,7 @@ class RFM69WRAPPER {
     uint8_t decode(uint8_t *i, RFM69::Packet *response, RFM69WRAPPER::WPacket *packet);
     void    decode_first_byte(uint8_t data, uint8_t *type, uint8_t *len);
     uint8_t encode_first_byte(uint8_t type, uint8_t len);
+    void    isr(); // include this function in ISR(PORTC_PORT_vect) {} on main file
 
   private:
     uint32_t gateway_id;
