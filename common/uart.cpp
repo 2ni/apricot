@@ -22,7 +22,6 @@
 static uint8_t tx_buff[TX_BUFF_SIZE];
 static uint8_t tx_in; // pointer of filling buffer
 volatile uint8_t tx_out; // pointer of sending
-uint8_t _uart_is_busy = 0;
 
 // TEST defined in Makefile of tests/
 #ifndef TEST
@@ -34,6 +33,7 @@ ISR(USART0_DRE_vect) {
   }
 
   USART0.TXDATAL = tx_buff[tx_out];
+  USART0.STATUS = USART_TXCIF_bm; // clear txcif
   uart_rollover(&tx_out, TX_BUFF_SIZE);
 }
 #endif
@@ -128,7 +128,6 @@ void uart_tuple(const char* key, char* value) {
  * sends a single char to the uart
  */
 void uart_send_char(unsigned char c) {
-  _uart_is_busy = 1;
   uint8_t next = tx_in;
   uart_rollover(&next, TX_BUFF_SIZE);
   while (next == tx_out);
@@ -145,11 +144,8 @@ void uart_send_char(unsigned char c) {
   */
 }
 
-/*
- * busy if _uart_is_busy = 1 or txcif=0
- */
 uint8_t uart_is_busy() {
-  return _uart_is_busy || (!(USART0.STATUS & USART_TXCIF_bm));
+  return (!(USART0.STATUS & USART_TXCIF_bm));
 }
 
 /*
