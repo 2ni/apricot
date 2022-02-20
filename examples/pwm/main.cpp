@@ -16,6 +16,25 @@
  * frequency: f / (CMPBCLR + 1)
  * CMPASET = 0
  * CMPACLR = 0-CMPBCLR
+
+ * PERIODIC FIXED OUTPUT (TCA0) outputs: WO0, WO1, WO2
+ * CPMxEN -> output goes to WOx
+ * TCA0.SINGLE.CMP0 = 100; // frequency=10MHz/CMP0
+ * TCA0.SINGLE.CTRLA = TCA_SINGLE_CLKSEL_DIV1_gc | TCA_SINGLE_ENABLE_bm;
+ * TCA0.SINGLE.CTRLB = TCA_SINGLE_CMP1EN_bm | TCA_SINGLE_WGMODE_FRQ_gc;
+ *
+ * PWM WITH DUTY CYCLE 38kHz 1/4 (TCA0)
+ * TCA0.SINGLE.PER = 263; // frequency=10MHz/PER, use PERBUF to dynamically change w/o glitches
+ * TCA0.SINGLE.CMP1 = 66; // duty cycly (max PER), user CMP1BUF to dynamicall change w/o glitches
+ * TCA0.SINGLE.CTRLA = TCA_SINGLE_CLKSEL_DIV1_gc | TCA_SINGLE_ENABLE_bm;
+ * TCA0.SINGLE.CTRLB = TCA_SINGLE_CMP1EN_bm | TCA_SINGLE_WGMODE_SINGLESLOPE_gc;
+ *
+ * PWM WITH DUTY CYCLE 38kHz 1/4 (TCB0/1, outputs: PA5 for TCB0, PA3 for TCB1
+ * TCB0.CTRLA = TCB_CLKSEL_CLKDIV2_gc | TCB_ENABLE_bm; // max duration: 1/10MHz*2 * 2^16 = 13.1ms
+ * TCB0.CTRLB = TCB_CCMPEN_bm | TCB_CNTMODE_PWM8_gc;
+ * TCB0.CNT = 0;
+ * TCB0.CCMP = (33<<8) | 132; // LSB: signal period, MSB: duty cycle (LSB+1)*dutycycle/100%
+ *
  */
 
 typedef enum {
