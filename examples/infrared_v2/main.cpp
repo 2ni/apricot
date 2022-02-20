@@ -17,12 +17,71 @@
 #include "mcu.h"
 #include "pins.h"
 
-const uint32_t commands[5] PROGMEM = {
-  0x866b01fe, // "1" vitaaudio
-  0x7a851de2, // "power on" rav231
-  0x7a851ee1, // "power off" rav231
-  0x7a851ae5, // "vol up" rav231
-  0x7a851be4  // "vol down" rav231
+const uint32_t commands[61] PROGMEM = {
+              // ********* vitaaudio
+  0x866b01fe, // 1, menu
+  0x866b02fd, // 2, down
+  0x866b03fc, // 3, shuffle
+  0x866b04fb, // 4, up
+  0x866b05fa, // 5, enter
+  0x866b06f9, // info
+  0x866b12ed, // clock
+  0x866b1ae5, // audio
+  0x866b1ee1, // power
+  0x866b08f7, // ok/play/pause
+  0x866b07f8, // back/rewind
+  0x866b09f6, // forward
+  0x866b0af5, // dab
+  0x866b1be4, // fm
+  0x866b0cf3, // aux
+  0x866b0df2, // ipod
+  0x866b1fe0, // vol up
+  0x866b0ef1, // vol down
+              // ********* rav231
+  0x7a851de2, // power on
+  0x7a851ee1, // power off
+  0x7a851ae5, // vol up
+  0x7a851be4, // vol down
+  0x7a851ce3, // mute
+  0x7a858778, // 6ch input
+  0x7a8514eb, // phono
+  0x7a8516e9, // tuner
+  0x7a8515ea, // cd
+  0x7a858554, // v-aux
+  0x7a85c03f, // cbl/sat
+  0x7a8518e7, // md/tape
+  0x7a8519e6, // cd-r
+  0x7a8554ab, // d-tv/ld
+  0x7a850ff0, // vcr1
+  0x7a8513ec, // vcr2
+  0x7a85c13e, // dvd
+  0x7a8510ef, // tuner ch+
+  0x7a8510ef, // tuner ch-
+  0x7a85e51a, // tuner 1
+  0x7a85e619, // tuner 2
+  0x7a85e718, // tuner 3
+  0x7a85e817, // tuner 4
+  0x7a85e916, // tuner 5
+  0x7a85ea15, // tuner 6
+  0x7a85eb14, // tuner 7
+  0x7a85ec13, // tuner 8
+  0x7a85ed12, // tuner 9
+
+  0x7a8556a9, // stereo
+  0x7a858877, // hall
+  0x7a858976, // church
+  0x7a858a75, // jazz club
+  0x7a858b74, // rock concert
+  0x7a858c73, // entertainment
+  0x7a858d72, // tv sports
+  0x7a858e71, // mono movie
+  0x7a858f70, // movie theater 1
+  0x7a85906f, // movie theater 2
+  0x7a85916e, // DTS
+  0x7a859669, // DTS select
+  0x9a0a2fd1, // 6.1/ES
+  0x7a8552ad, // amp ch+
+  0x7a8553ac, // amp ch-
 };
 
 namespace CMD {
