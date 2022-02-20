@@ -67,7 +67,7 @@ void uart_init(uint8_t enable_rx) {
   _delay_ms(600); // the key listener needs some time to start
 
   // see https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences for colors
-  DF("\033[1;38;5;18;48;5;226m Hello from 0x%06lX \033[0m\n", get_deviceid());
+  DF("\033[1;38;5;18;48;5;226m Hello from 0x%06lX @ %uMHz \033[0m\n", get_deviceid(), (uint8_t)(F_CPU/1000000));
 
   if (enable_rx) {
     USART0.CTRLB |= USART_RXEN_bm;  // enable RX

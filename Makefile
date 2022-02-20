@@ -16,7 +16,7 @@ DEVICE_PY  = $(shell echo $(DEVICE) | sed -e 's/^.*\(tiny\d*\)/\1/')
 # default prescaler is 6 -> 3.3MHz
 # max frequency is 13.3MHz for 3.3v (see p.554)
 # set to 10MHz with cmd: _PROTECTED_WRITE(CLKCTRL.MCLKCTRLB, CLKCTRL_PDIV_2X_gc);
-CLK        = 10000000
+CLK        = $(shell if [ ! -z $(clk) ]; then echo $(clk); else echo 10000000; fi)
 
 # TBD FUSES
 # see http://www.engbedded.com/fusecalc/

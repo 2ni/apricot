@@ -7,7 +7,7 @@ CLOCK clock;
 
 void mcu_init(uint8_t enable_rx, uint8_t enable_clock) {
   // set prescaler to 2 for 10MHz which is suitable for 3.3v
-  _PROTECTED_WRITE(CLKCTRL.MCLKCTRLB, CLKCTRL_PDIV_2X_gc | CLKCTRL_PEN_bm);
+  _PROTECTED_WRITE(CLKCTRL.MCLKCTRLB, (F_CPU == 10000000 ? CLKCTRL_PDIV_2X_gc : (F_CPU == 5000000 ? CLKCTRL_PDIV_4X_gc : CLKCTRL_PDIV_8X_gc)) | (F_CPU == 20000000 ? 0 : CLKCTRL_PEN_bm));
 
   // use external crystal as clock (for RTC). Run in standby
 #ifdef __AVR_ATtiny3217__

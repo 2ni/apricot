@@ -15,7 +15,7 @@
 #include <avr/io.h>
 
 #define USART_BPS   19200
-#define USART_BAUD_RATE(BAUD_RATE) ((float)(10000000 * 64 / (16 * (float)BAUD_RATE)) + 0.5)
+#define USART_BAUD_RATE(BAUD_RATE) ((float)(F_CPU * 64 / (16 * (float)BAUD_RATE)) + 0.5)
 
 #define USART_PORT PORTA
 #define USART_TX PIN1_bm
