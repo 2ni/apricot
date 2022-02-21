@@ -48,6 +48,9 @@ make reset                // resets the mcu and starts the debugging usart
 ```
 
 ### SETUP
+
+TODO: use [pymcuprog](https://github.com/microchip-pic-avr-tools/pymcuprog) instead of pyupdi
+
 You'll need the toolchain from microchip to compile the sources.
 
 The shared usart for debugging and programming makes use of the DTR line to control which part is connected to the usb. For this matter a special [serial terminal](/serialterminal.py) and programmer is used. As programmer a patched [pyupdi](https://github.com/mraardvark/pyupdi) comes to hand.
@@ -96,7 +99,7 @@ index 96be64b..f1afb26 100644
          self.logger.info("Opening {} at {} baud".format(port, baud))
 -        self.ser = serial.Serial(port, baud, parity=serial.PARITY_EVEN, timeout=1, stopbits=serial.STOPBITS_TWO)
 +        self.ser = serial.serial_for_url(port, baud, parity=serial.PARITY_EVEN, timeout=1, stopbits=serial.STOPBITS_TWO, rtscts=False, dsrdtr=False, do_not_open=True)
-+        self.ser.rts = 0  # needed so dtr reall gets 0v
++        self.ser.rts = 0  # needed so dtr really gets 0v
 +        self.ser.dtr = 1
 +
 +        self.ser.open()
@@ -113,7 +116,7 @@ index 96be64b..f1afb26 100644
 
 -        temporary_serial = serial.Serial(self.port, 300, stopbits=serial.STOPBITS_ONE, timeout=1)
 +        temporary_serial = serial.serial_for_url(self.port, 300, stopbits=serial.STOPBITS_ONE, timeout=1, rtscts=False, dsrdtr=False, do_not_open=True)
-+        temporary_serial.rts = 0  # needed so dtr reall gets 0v
++        temporary_serial.rts = 0  # needed so dtr really gets 0v
 +        temporary_serial.dtr = 1
 +        temporary_serial.open()
 +        time.sleep(.01)
