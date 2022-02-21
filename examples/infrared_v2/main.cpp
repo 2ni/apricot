@@ -105,28 +105,28 @@ uint32_t ts_last_reception = 0;
 ISR(TCB1_INT_vect) {
   TCB1.INTFLAGS = TCB_CAPT_bm;
 
-    // nec repeat: 11.25ms = 28125 ticks
-    // repeat only valid if we had a cmd within the last 150ms
-    if (TCB1.CCMP > 27375 && TCB1.CCMP < 28875 && (clock.current_tick - ts_last_reception) < 600) {
-      cmd_received = 3;
-      ts_last_reception = clock.current_tick;
+  // nec repeat: 11.25ms = 28125 ticks
+  // repeat cmd is only valid if we had a cmd within the last ~140ms = 9 rtc ticks * (512 / 32768)
+  if (TCB1.CCMP > 27375 && TCB1.CCMP < 28875 && (clock.current_tick - ts_last_reception) < 9) {
+    cmd_received = 3; // repeat
+    ts_last_reception = clock.current_tick;
+  }
+  else if (!cmd_received && TCB1.CCMP > 33000 && TCB1.CCMP < 34500) { // nec preamble: 13.5ms = 33750 ticks
+    cmd_in = 0;
+    p_cmd_in = 0;
+    cmd_received = 1; // capture started
+    ts_last_reception = clock.current_tick;
+  }
+  else if (cmd_received == 1) {
+    // logic 1
+    if (TCB1.CCMP > 5388 && TCB1.CCMP < 5788) { // 2*560u = 2800 ticks
+      int8_t offset = p_cmd_in<8 ? 24 : (p_cmd_in<16 ? 8 : (p_cmd_in<24 ? -8 : -24));
+      cmd_in |= (uint32_t)1<<(p_cmd_in+offset);
     }
-    else if (!cmd_received && TCB1.CCMP > 33000 && TCB1.CCMP < 34500) { // nec preamble: 13.5ms = 33750 ticks
-      cmd_in = 0;
-      p_cmd_in = 0;
-      cmd_received = 1;
-      ts_last_reception = clock.current_tick;
+    if (++p_cmd_in == 32) {
+      cmd_received = 2; // capture done
     }
-    else if (cmd_received == 1) {
-      // logic 1
-      if (TCB1.CCMP > 5388 && TCB1.CCMP < 5788) { // 2*560u = 2800 ticks
-        int8_t offset = p_cmd_in<8 ? 24 : (p_cmd_in<16 ? 8 : (p_cmd_in<24 ? -8 : -24));
-        cmd_in |= (uint32_t)1<<(p_cmd_in+offset);
-      }
-      if (++p_cmd_in == 32) {
-        cmd_received = 2;
-      }
-    }
+  }
 }
 
 namespace STATUS_SEND {
@@ -159,14 +159,14 @@ ISR(TCA0_OVF_vect) {
       status_send = STATUS_SEND::PREAMBLE_NEG;
       cmd_out_p = 0;
       cmd_sent = 0;
-      PORTB.OUTSET = PIN7_bm;
+      // PORTB.OUTSET = PIN7_bm;
       break;
     case STATUS_SEND::PREAMBLE_NEG:
       if (out_cnt >= out_cnt_next) {
         TCB0.CTRLA &= ~TCB_ENABLE_bm;
         out_cnt_next += 8; // 4.5ms
         status_send = STATUS_SEND::BIT_POS;
-        PORTB.OUTCLR = PIN7_bm;
+        // PORTB.OUTCLR = PIN7_bm;
       }
       break;
     case STATUS_SEND::BIT_POS:
@@ -174,7 +174,7 @@ ISR(TCA0_OVF_vect) {
         TCB0.CTRLA |= TCB_ENABLE_bm;
         out_cnt_next += 1; // 562us
         status_send = STATUS_SEND::BIT_NEG;
-        PORTB.OUTSET = PIN7_bm;
+        // PORTB.OUTSET = PIN7_bm;
       }
       break;
     case STATUS_SEND::BIT_NEG:
@@ -189,7 +189,7 @@ ISR(TCA0_OVF_vect) {
           } else {
             status_send = STATUS_SEND::BIT_POS;
           }
-          PORTB.OUTCLR = PIN7_bm;
+          // PORTB.OUTCLR = PIN7_bm;
         }
       }
         break;
@@ -198,7 +198,7 @@ ISR(TCA0_OVF_vect) {
           TCB0.CTRLA |= TCB_ENABLE_bm;
           out_cnt_next += 1;
           status_send = STATUS_SEND::BIT_LAST_NEG;
-          PORTB.OUTSET = PIN7_bm;
+          // PORTB.OUTSET = PIN7_bm;
         }
         break;
     case STATUS_SEND::BIT_LAST_NEG:
@@ -207,7 +207,7 @@ ISR(TCA0_OVF_vect) {
           out_cnt_next = 196; // 110ms
           cmd_sent = 1;
           status_send = STATUS_SEND::REPEAT_POS;
-          PORTB.OUTCLR = PIN7_bm;
+          // PORTB.OUTCLR = PIN7_bm;
         }
         break;
     case STATUS_SEND::REPEAT_POS:
@@ -216,7 +216,7 @@ ISR(TCA0_OVF_vect) {
           out_cnt = 0;
           out_cnt_next = 16; // 9ms
           status_send = STATUS_SEND::REPEAT_NEG;
-          PORTB.OUTSET = PIN7_bm;
+          // PORTB.OUTSET = PIN7_bm;
         }
         break;
     case STATUS_SEND::REPEAT_NEG:
@@ -224,7 +224,7 @@ ISR(TCA0_OVF_vect) {
           TCB0.CTRLA &= ~TCB_ENABLE_bm;
           out_cnt_next += 4; // 2.25ms
           status_send = STATUS_SEND::BIT_LAST_POS;
-          PORTB.OUTCLR = PIN7_bm;
+          // PORTB.OUTCLR = PIN7_bm;
         }
     default:
         break;
@@ -249,7 +249,7 @@ ISR(PORTC_PORT_vect) {
 
 void init_timers() {
   // infrared input PA7: TCB1 in input capture frequency measurement mode
-  TCB1.CTRLA = TCB_CLKSEL_CLKDIV2_gc | TCB_ENABLE_bm;
+  TCB1.CTRLA = TCB_RUNSTDBY_bm | TCB_CLKSEL_CLKDIV2_gc | TCB_ENABLE_bm;
   TCB1.CTRLB = TCB_CNTMODE_FRQ_gc;
   TCB1.INTCTRL = TCB_CAPT_bm; // enable isr
   TCB1.EVCTRL = TCB_CAPTEI_bm; // enable catpure input event
@@ -311,15 +311,36 @@ int main(void) {
   // oscilloscope test pin
   PORTB.DIRSET = PIN7_bm;
 
+  // deactivate any unused pin (used PA5:ir pwm, PA7: ir input, PB7: debug, PC3-5: buttons)
+  PORTA.PIN0CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+  PORTA.PIN1CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+  PORTA.PIN2CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+  PORTA.PIN3CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+  PORTA.PIN4CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+  PORTA.PIN6CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+  PORTB.PIN0CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+  PORTB.PIN1CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+  PORTB.PIN2CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm; // tosc2
+  PORTB.PIN3CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm; // tosc1
+  PORTB.PIN4CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm; // vin
+  PORTB.PIN5CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+  PORTB.PIN6CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+  PORTB.PIN7CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+  PORTC.PIN0CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+  PORTC.PIN1CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+  PORTC.PIN2CTRL = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
+
   init_timers();
-  mcu_init();
+  mcu_init(0, 0);
+  clock.init(511); // 1 rtc tick = 15.6ms
 
   while (1) {
     // handle buttons (debounced)
     if (pressed && ts == 0) {
       ts = clock.current_tick;
     }
-    else if (ts && (clock.current_tick - ts) > 205) { // 50ms = 50/8000*32768 = 204.8
+    // we have a valid button press
+    else if (ts && (clock.current_tick - ts) > 3) { // 3 ticks * 512 / 32768 = 46.875ms
       if ((PORTC.IN & (1<<pressed)) == 0 && !button) {
         button = pressed;
         keep_awake |= (1<<0);
@@ -359,9 +380,21 @@ int main(void) {
     }
     */
 
+    // infrared data detected and ready to use
     if (cmd_received >= 2) {
       DF("rec: 0x%08lx%s\n", cmd_in, cmd_received == 3 ? " (rep)" : "");
       cmd_received = 0;
+    }
+
+    // don't go to sleep if sending in progress
+    // reception should work while sleeping as all happens in isr
+    // active: 9us, sleep: 15.6ms (=512/32768)
+    // ir receiver consumption: 340uA
+    if (!keep_awake) {
+      while (uart_is_busy());
+      PORTB.OUTSET = PIN7_bm;
+      __asm__ __volatile__ ( "sleep" "\n\t" :: );
+      PORTB.OUTCLR = PIN7_bm;
     }
   }
 }
