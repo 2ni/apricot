@@ -1,5 +1,7 @@
 """
 https://github.com/chris-heo/updizombie
+https://github.com/Polarisru/updiprog
+https://github.com/microchip-pic-avr-tools/pymcuprog
 
 port: eg /dev/cu.usbserial-1430
 """
