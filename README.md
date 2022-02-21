@@ -13,6 +13,7 @@ There are many examples in the [examples](/examples) section such as:
 - [touch library](/examples/touch) to work with touch buttons
 - [sleep](/examples/sleep) examples
 - complete [node](/examples/humidity-node) with humidity, temperature sensor shown on a display and sent to a RFM69 gw
+- [infrared transmitter](examples/infrared_v2) which can receive and transmit NEC signals (remote control) in parallel
 - more examples and libraries are planned (eg infrared remote control, mppt solar charger, dcc train switches, ...)
 
 
