@@ -12,7 +12,7 @@ The receiver prints the code received on the serial terminal.
 ## SETUP
 We use multiple timers to decode and generate the infrared signal.
 
-<img src="transmission-reception.png" width="400" />
+<img src="transmission-reception.png" width="800" />
 
 ### TCB1
 This timer captures the infrared signal (it just measures the frequency aka duration of one cycle) on PA7. For this TCB1 is set in "Input Capture Frequency Measurement Mode" (TCB_CNTMODE_FRQ_gc). Every time we get a period, an interrupt is triggered (TCB_CAPT_bm).
@@ -46,4 +46,4 @@ The element using the most power is the infrared receiver TSOP34838 with 340uA. 
 
 The mcu stays active as long as infrared transmission is active.
 
-<img src="sleepvsactive.png" width="400" />
+<img src="sleepvsactive.png" width="800" />
