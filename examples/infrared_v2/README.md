@@ -7,36 +7,11 @@ The receiver prints the code received on the serial terminal.
 
 ## WIRING RECEIVER
 
-     3.3v
-      |
--------------
-| TSOP34838 |------ PA7
--------------
-      |
-     ---
-     GND
-
-## WIRING TRANSMITTER
-
-            3.3v
-             |
-             -
-            | | 10
-            | |
-             -
-             |
-            --- 
-            \ / IR LED IR33C
-      1k     |
-       __   /
- PA5 -|__|-|   BC547
-            \
-            |
-           ---
-           GND
+<img src="schematic.png" width="400" />
 
 ## SETUP
 We use multiple timers to decode and generate the infrared signal.
+
 <img src="transmission-reception.png" width="400" />
 
 ### TCB1
@@ -70,4 +45,5 @@ To detect button pressed we use pin interrupts by setting up the pins with inter
 The element using the most power is the infrared receiver TSOP34838 with 340uA. The mcu is mostly in sleep mode when nothing happens. Of 15.6ms (which is one RTC cylce 512/32768=15.6ms) it's powered for 9us to update our rtc counter and going through the main loop.
 
 The mcu stays active as long as infrared transmission is active.
+
 <img src="sleepvsactive.png" width="400" />
