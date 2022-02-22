@@ -51,7 +51,7 @@ CFLAGS     = -Wall -Wl,-gc-sections -ffunction-sections -fdata-sections -Os -DF_
 # enforce port with <cmd> port=<1|2|3|4>
 #
 PORT       = $(shell if [ ! -z $(port) ]; then ls /dev/cu.usbserial* |grep $(port)0; else ls -t /dev/cu.usbserial*|head -1; fi)
-PYUPDI     = python pyupdi/updi/pyupdi.py -d $(DEVICE_PY) -c $(PORT)
+PYUPDI     = python pyupdi/updi/pyupdi.py -d $(DEVICE_PY) -c $(PORT) -b 230400
 OBJCOPY    = $(BIN)avr-objcopy
 OBJDUMP    = $(BIN)avr-objdump
 SIZE       = $(BIN)avr-objdump -Pmem-usage
