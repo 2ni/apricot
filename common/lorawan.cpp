@@ -616,10 +616,9 @@ Status LORAWAN::decode_data_down(Packet *payload, Packet *rx_cmds, uint8_t ack_r
   // DF("fctrl: 0x%02x\n", fctrl);
   uint8_t frame_options_len = (fctrl & 0x07); // FCtrl[3..0] if set, we have some options (=mac cmds)
   uint8_t ack_received = ((fctrl>>5) & 0x01); // FCtrl[5] if ack was requested while sending, this ack should be set in the response
-  uint8_t adr = ((fctrl>>7) & 0x01);               // FCtrl[7]
   // DF("foptslen: %u\n", frame_options_len);
   DF("ack received: %u\n", ack_received);
-  DF("adr received: %u\n", adr);
+  DF("adr received: %u\n", ((fctrl>>7) & 0x01)); // FCtrl[7]
   // we got mac commands
   if (frame_options_len) {
     rx_cmds->len = frame_options_len;

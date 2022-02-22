@@ -334,7 +334,9 @@ uint8_t RFM69::send_retry(uint32_t to, const void* buffer, uint8_t buffer_len, R
   for (uint8_t i=0; i<retries; i++) {
     if (!i) D("  ");
     if (this->send(to, buffer, buffer_len, response)) {
+      #ifdef DEBUG
       if (i) DL("") else { uart_send_char(0x08);uart_send_char(0x08); } // remove 2 spaces printed out on send()
+      #endif
       return 1;
     }
 

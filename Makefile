@@ -18,6 +18,8 @@ DEVICE_PY  = $(shell echo $(DEVICE) | sed -e 's/^.*\(tiny\d*\)/\1/')
 # set to 10MHz with cmd: _PROTECTED_WRITE(CLKCTRL.MCLKCTRLB, CLKCTRL_PDIV_2X_gc);
 CLK        = $(shell if [ ! -z $(clk) ]; then echo $(clk); else echo 10000000; fi)
 
+DEBUG      = $(shell if [ ! -z $(nodebug) ]; then echo ""; else echo "-DDEBUG"; fi)
+
 # TBD FUSES
 # see http://www.engbedded.com/fusecalc/
 LFU        = 0xAE
@@ -29,7 +31,7 @@ EXT        =
 COMMON     = ./common
 EXCLUDE    = timer.cpp
 
-FLAGS      = -DDEBUG -std=c++11 # avoid warning "non-static data member initializers"
+FLAGS      = $(DEBUG) -std=c++11 # avoid warning "non-static data member initializers"
 CPPFLAGS   =
 
 # toolchain_microchip
