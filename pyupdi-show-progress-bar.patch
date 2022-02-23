@@ -1,0 +1,14 @@
+diff --git a/updi/nvm.py b/updi/nvm.py
+index 6476e6b..063f2ec 100644
+--- a/updi/nvm.py
++++ b/updi/nvm.py
+@@ -101,7 +101,8 @@ class UpdiNvmProgrammer(object):
+         pages = self.page_data(data, self.device.flash_pagesize)
+ 
+         # Program each page
+-        for page in pages:
++        for i, page in enumerate(pages):
++            print("\r[{:<{width}}]{}% ".format("#" * (i + 1), round(100 * (i + 1) / len(pages)), width=len(pages)), end="", flush=True)
+             self.logger.info("Writing page at 0x{0:04X}".format(address))
+             self.application.write_nvm(address, page)
+             address += len(page)
