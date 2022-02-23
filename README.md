@@ -81,6 +81,7 @@ don't forget to include <avr/io.h> in your main code!
 
 #### PYUPDI
 ```
+cd src_python
 git clone git@github.com:mraardvark/pyupdi.git
 make patchpyupdi
 pip install -e pyupdi # IMPORTANT! install pyupdi to have correct pathes to use it

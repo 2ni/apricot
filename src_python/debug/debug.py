@@ -1,13 +1,27 @@
 """
 https://github.com/chris-heo/updizombie
+protocol: https://github.com/mraardvark/pyedbglib/blob/master/pyedbglib/protocols/avr8protocol.py
+
+
+https://aykevl.nl/2020/06/simavr-debug
+https://github.com/stemnic/pyAVRdbg
 https://github.com/Polarisru/updiprog
 https://github.com/microchip-pic-avr-tools/pymcuprog
 
 port: eg /dev/cu.usbserial-1430
+
+- to get address of global variables toolchain_microchip/bin/avr-nm main.elf | grep " B \| D "
+- show info                          toolchain_microchip/bin/avr-readelf -a main.elf
+
+avr-gdb main.elf
+(gdb) target remote :1234
+(gdb) b main // set breakpoint at main
+(gdb) c      // continue
+
 """
 
-import pyupdi.updi.link
-import pyupdi.updi.constants
+import updi.link as link
+import updi.constants as constants
 import time
 
 
@@ -26,11 +40,11 @@ class ATtiny3217Debug():
         self.link = link
 
     def attach(self):
-        self.link.key(pyupdi.updi.constants.UPDI_KEY_64, b'OCD     ')
-        self.link.stcs(4, 0x01)
+        self.link.key(constants.UPDI_KEY_64, b'OCD     ')
+        self.link.stcs(4, 0x01)  # stop
 
     def detach(self):
-        self.link.stcs(4, 0x02)
+        self.link.stcs(4, 0x02)  # go
         # self.link.stcs(updi.constants.UPDI_CS_CTRLB,
         #    (1 << updi.constants.UPDI_CTRLB_CCDETDIS_BIT) |
         #    (1 << updi.constants.UPDI_CTRLB_UPDIDIS_BIT)
@@ -104,7 +118,7 @@ MAIN CODE
 """
 
 try:
-    link = pyupdi.updi.link.UpdiDatalink("/dev/cu.usbserial-1430", 115200)
+    link = link.UpdiDatalink("/dev/cu.usbserial-1430", 115200)
 except Exception as ex:
     print("something went wrong:", ex)
     exit()
@@ -116,7 +130,11 @@ time.sleep(1)
 mcu.PORTB.OUTCLR = PIN5_bm
 
 """
-link.st(0x0425, 0x20)  # set PB5
+link.st(0x0425, 0x20)  # set PORTB.PB5
 time.sleep(1)
-link.st(0x0426, 0x20)  # clr PB5
+link.st(0x0426, 0x20)  # clr PORTB.PB5
+
+#  reset device
+link.stcs(constants.UPDI_ASI_RESET_REQ, constants.UPDI_RESET_REQ_VALUE)  # apply updi reset condition
+link.stcs(constants.UPDI_ASI_RESET_REQ, 0x00)  # release updi reset condition
 """

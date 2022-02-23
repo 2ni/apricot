@@ -51,7 +51,7 @@ CFLAGS     = -Wall -Wl,-gc-sections -ffunction-sections -fdata-sections -Os -DF_
 # enforce port with <cmd> port=<1|2|3|4>
 #
 PORT       = $(shell if [ ! -z $(port) ]; then ls /dev/cu.usbserial* |grep $(port)0; else ls -t /dev/cu.usbserial*|head -1; fi)
-PYUPDI     = python pyupdi/updi/pyupdi.py -d $(DEVICE_PY) -c $(PORT) -b 230400
+PYUPDI     = python src_python/pyupdi/updi/pyupdi.py -d $(DEVICE_PY) -c $(PORT) -b 230400
 OBJCOPY    = $(BIN)avr-objcopy
 OBJDUMP    = $(BIN)avr-objdump
 SIZE       = $(BIN)avr-objdump -Pmem-usage
@@ -147,6 +147,6 @@ tests:
 	@$(MAKE) -C tests
 
 patchpyupdi:
-	@cd pyupdi/updi && git apply ../../pyupdi.patch
+	@cd src_python/pyupdi/updi && git apply ../../pyupdi.patch
 	@echo "DONE. Don't forget to run pip install -e pyupdi"
 	@#sed -i '' 's/^\([[:space:]]*\)\(.*\) = serial.Serial(\([^\)]*\))/\1\2 = serial.serial_for_url(\3, rtscts=False, dsrdtr=False, do_not_open=True)\n\1\2.rts = 0  # needed so dtr really gets 0v\n\1\2.dtr = 1\n\1\2.open()\n\1# dtr is only set when port is opened, and stable low after ~3ms\n\1# during that time some crap from uart can come in, which disturbs the updi communication\n\1time.sleep(.01)\n\1self.ser.flushInput()/' $(shell find pyupdi -type f -name 'physical.py')
