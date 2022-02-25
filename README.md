@@ -60,9 +60,10 @@ The shared usart for debugging and programming makes use of the DTR line to cont
 
 #### PYTHON
 ```
-pyenv virtualenv 3.9.0 apricot
+pyenv virtualenv 3.10.2 apricot
 pyenv local apricot
 pip install -r requirements
+pip install -e src_python/pyupdi
 ```
 
 #### MICROCHIP TOOLCHAIN
@@ -84,7 +85,7 @@ don't forget to include <avr/io.h> in your main code!
 cd src_python
 git clone git@github.com:mraardvark/pyupdi.git
 make patchpyupdi
-pip install -e pyupdi # IMPORTANT! install pyupdi to have correct pathes to use it
+pip install -e src_python/pyupdi # IMPORTANT! install pyupdi to have correct pathes to use it
 ```
 
 This should result in the following change:
