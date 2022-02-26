@@ -20,8 +20,8 @@ avr-gdb main.elf
 
 """
 
-import updi.link as link
-import updi.constants as constants
+import pyupdi.updi.link
+import pyupdi.updi.constants
 import time
 
 
@@ -40,7 +40,7 @@ class ATtiny3217Debug():
         self.link = link
 
     def attach(self):
-        self.link.key(constants.UPDI_KEY_64, b'OCD     ')
+        self.link.key(pyupdi.updi.constants.UPDI_KEY_64, b'OCD     ')
         self.link.stcs(4, 0x01)  # stop
 
     def detach(self):
@@ -118,7 +118,7 @@ MAIN CODE
 """
 
 try:
-    link = link.UpdiDatalink("/dev/cu.usbserial-1430", 115200)
+    link = pyupdi.updi.link.UpdiDatalink("/dev/cu.usbserial-1430", 115200)
 except Exception as ex:
     print("something went wrong:", ex)
     exit()
@@ -130,11 +130,21 @@ time.sleep(1)
 mcu.PORTB.OUTCLR = PIN5_bm
 
 """
+python
+import updi
+link = updi.link.UpdiDatalink("/dev/cu.usbserial-1430", 115200)
+link.key(updi.constants.UPDI_KEY_64, b'OCD     ')
+link.stcs(4, 0x01)  # stop
 link.st(0x0425, 0x20)  # set PORTB.PB5
+print(link.ld(0x0428)) # read PORTB
 time.sleep(1)
 link.st(0x0426, 0x20)  # clr PORTB.PB5
+link.stcs(4, 0x02)  # go
+
+print(link.ld(0x1280)) # fuse 0
+print("0x%04x" % (link.ldcs(0x18)<<8 | link.ldcs(0x19))) # stack pointer?
 
 #  reset device
-link.stcs(constants.UPDI_ASI_RESET_REQ, constants.UPDI_RESET_REQ_VALUE)  # apply updi reset condition
-link.stcs(constants.UPDI_ASI_RESET_REQ, 0x00)  # release updi reset condition
+link.stcs(pyupdi.updi.constants.UPDI_ASI_RESET_REQ, pyupdi.updi.constants.UPDI_RESET_REQ_VALUE)  # apply updi reset condition
+link.stcs(pyupdi.updi.constants.UPDI_ASI_RESET_REQ, 0x00)  # release updi reset condition
 """
