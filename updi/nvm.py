@@ -128,7 +128,8 @@ class UpdiNvmProgrammer(object):
         pages = self.page_data(data, pagesize)
 
         # Program each page
-        for page in pages:
+        for i, page in enumerate(pages):
+            print("\r[{:<{width}}]{}% ".format("#" * (i + 1), round(100 * (i + 1) / len(pages)), width=len(pages)), end="", flush=True)
             self.logger.info("Writing page at 0x{0:04X}".format(address))
             self.application.write_nvm(address, page, use_word_access=use_word_access)
             address += len(page)
