@@ -49,12 +49,15 @@ make reset                // resets the mcu and starts the debugging usart
 ```
 
 ### SETUP
+```
+git clone --recurse-submodules git@github.com:2ni/apricot.git
+```
 
 TODO: use [pymcuprog](https://github.com/microchip-pic-avr-tools/pymcuprog) instead of pyupdi
 
 You'll need the toolchain from microchip to compile the sources.
 
-The shared usart for debugging and programming makes use of the DTR line to control which part is connected to the usb. For this matter a special [serial terminal](/serialterminal.py) and programmer is used. As programmer a patched [pyupdi](https://github.com/mraardvark/pyupdi) comes to hand.
+The shared usart for debugging and programming makes use of the DTR line to control which part is connected to the usb. For this matter a special [serial terminal](/serialterminal.py) and programmer is used. As programmer a patched [pyupdi](https://github.com/2ni/pyupdi) comes to hand.
 - DTR=1 -> updi mode (DTR outputs 0v)
 - DTR=0 -> uart debug mode (default, DTR outputs 3.3v)
 
@@ -81,10 +84,11 @@ unzip Atmel.ATtiny_DFP.1.8.332.atpack -d toolchain_microchip/pack/
 don't forget to include <avr/io.h> in your main code!
 
 #### PYUPDI
+pyupdi is available as a submodule in the project on src_python/pyupdi
+
 ```
-cd src_python
-git clone git@github.com:mraardvark/pyupdi.git
-make patchpyupdi
+git submodule init
+git submodule update
 pip install -e src_python/pyupdi # IMPORTANT! install pyupdi to have correct pathes to use it
 ```
 
