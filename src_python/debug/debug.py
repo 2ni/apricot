@@ -131,15 +131,24 @@ mcu.PORTB.OUTCLR = PIN5_bm
 
 """
 python
+from updi.nvm import UpdiNvmProgrammer
+nvm = UpdiNvmProgrammer(comport="/dev/cu.usbserial-1430", baud=115200, device="attiny3217")
+import logging
 import updi
-link = updi.link.UpdiDatalink("/dev/cu.usbserial-1430", 115200)
+logging.basicConfig(format="%(levelname)s:%(name)s %(message)s", level=logging.INFO)
+nvm.application.datalink.key(updi.constants.UPDI_KEY_64, b'OCD     ') # [0x55, 0xe0], [0x20, 0x20, 0x20, 0x20, 0x20, 0x44, 0x43, 0x4f]
+
+# link = updi.link.UpdiDatalink("/dev/cu.usbserial-1430", 115200)
+link = nvm.application.datalink
 link.key(updi.constants.UPDI_KEY_64, b'OCD     ')
-link.stcs(4, 0x01)  # stop
+link.stcs(4, 0x01)  # stop [0x55, 0xc4, 0x1]
+link.st(0x0f88, 4); link.stcs(4, 2) # step
+link.st(0x0f88, 2); link.stcs(4, 2) # clear "step"
+print(link.ld16(0x0f94)) # program counter? 0x55 0x05 0x94 0x0f 0x5a 0x00
 link.st(0x0425, 0x20)  # set PORTB.PB5
 print(link.ld(0x0428)) # read PORTB
-time.sleep(1)
 link.st(0x0426, 0x20)  # clr PORTB.PB5
-link.stcs(4, 0x02)  # go
+link.stcs(4, 0x02)  # go [0x55, 0xc4, 0x2]
 
 print(link.ld(0x1280)) # fuse 0
 print("0x%04x" % (link.ldcs(0x18)<<8 | link.ldcs(0x19))) # stack pointer?

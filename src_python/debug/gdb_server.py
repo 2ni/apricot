@@ -1,4 +1,10 @@
 """
+https://aykevl.nl/2020/06/simavr-debug
+https://github.com/stemnic/pyAVRdbg
+https://github.com/microchip-pic-avr-tools/pyedbglib
+https://github.com/microchip-pic-avr-tools/pymcuprog
+https://github.com/chris-heo/updizombie/issues/1
+
 https://sourceware.org/gdb/current/onlinedocs/gdb/Remote-Protocol.html
 toolchain_microchip/bin/avr-gdb main.elf
 
