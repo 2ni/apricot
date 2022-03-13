@@ -24,7 +24,7 @@ The input of PA7 is routed as transmitter (event channel) to the input of TCB1 (
 The longest cycle we will face in the NEC is the preamble with 13.5ms (9ms + 4.5ms). To avoid an overflow we set use the CLKDIV2 on the clock and run the mcu on 5MHz. With this we can measure a max of 2^16/5000000/2 = 65.536ms. With 10MHz we would only get 13.1ms, which is just not enough.
 
 ### TCB0
-This timer is used to generate the 38kHz signal for the infrared transmitter. To spare power we use a duty cycle of 1/4.
+This timer is used to generate the 38kHz signal for the infrared transmitter on PA5 (=TCB0 WO output). To spare power we use a duty cycle of 1/4.
 
 THe signal is done without interrupt in the game, by make use of the "8-Bit PWM Mode".
 
