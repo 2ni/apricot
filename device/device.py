@@ -14,7 +14,7 @@ DEVICES_ATMEGA_8K = set(["atmega808", "atmega809"])
 
 # tinyAVR
 DEVICES_ATTINY_32K = set(["attiny3216", "attiny3217"])
-DEVICES_ATTINY_16K = set(["attiny1604", "attiny1606", "attiny1607", "attiny1614", "attiny1616", "attiny1617"])
+DEVICES_ATTINY_16K = set(["attiny1604", "attiny1606", "attiny1607", "attiny1614", "attiny1616", "attiny1617", "attiny1627"])
 DEVICES_ATTINY_8K = set(["attiny804", "attiny806", "attiny807", "attiny814", "attiny816", "attiny817"])
 DEVICES_ATTINY_4K = set(["attiny402", "attiny404", "attiny406", "attiny412", "attiny414", "attiny416", "attiny417"])
 DEVICES_ATTINY_2K = set(["attiny202", "attiny204", "attiny212", "attiny214"])
@@ -38,7 +38,7 @@ class Device(object):  # pylint: disable=too-few-public-methods
         self.sigrow_address = DEFAULT_SIGROW_ADDRESS
         self.fuses_address = DEFAULT_FUSES_ADDRESS
         self.userrow_address = DEFAULT_USERROW_ADDRESS
-        
+
         # Add add at* prefix if not present
         if(device_name.startswith("tiny") or device_name.startswith("mega")):
             device_name = "at" + device_name
@@ -103,7 +103,7 @@ class Device(object):  # pylint: disable=too-few-public-methods
             Query for device support list
             :return: list of supported devices
         """
-        
+
         # Remove at* prefix on all targets (e.g attiny202 -> tiny202)
         # for legacy naming support
         DEVICES_TINY_2K  = set([s[2:] for s in DEVICES_ATTINY_2K])
