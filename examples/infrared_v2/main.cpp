@@ -258,7 +258,7 @@ void init_timers() {
   EVSYS.ASYNCUSER11 = EVSYS_ASYNCUSER11_ASYNCCH0_gc; // set TCB1 event input to channel 0
   EVSYS.ASYNCCH0 = EVSYS_ASYNCCH0_PORTA_PIN7_gc;
 
-  // infrared output PA5: TCB0 37.88kHz 1/4 duty cycle
+  // infrared output PA5 (TCB0 WO): TCB0 37.88kHz 1/4 duty cycle
   TCB0.CTRLA = TCB_CLKSEL_CLKDIV2_gc; // | TCB_ENABLE_bm; // max duration: 1/5MHz*2 * 2^16 = 26.2ms
   TCB0.CTRLB = TCB_CCMPEN_bm | TCB_CNTMODE_PWM8_gc;
   TCB0.CNT = 0;
