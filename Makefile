@@ -8,6 +8,10 @@
 # export PATH=/www/forgetmenot/toolchain/bin:$PATH
 #
 # run "make FLAGS=" to not run in debug mode
+#
+# example:
+# make mcu=attiny1627 common="uart aes" port=3
+#
 .PHONY: all clean tests
 
 PRJ        = main
@@ -61,8 +65,9 @@ CC         = $(BIN)avr-gcc
 # CFILES     = $(wildcard $(SRC)/*.c)
 CFILES    := $(foreach dir, $(COMMON) $(SRC), $(wildcard $(dir)/*.c))
 EXTC      := $(foreach dir, $(EXT), $(wildcard $(dir)/*.c))
-# CPPFILES   = $(wildcard $(SRC)/*.cpp)
-CPPFILES  := $(foreach dir, $(COMMON) $(SRC), $(filter-out $(foreach file, $(EXCLUDE), $(dir)/$(file)), $(wildcard $(dir)/*.cpp)))
+CPPFILES  := $(foreach dir, $(SRC), $(wildcard $(dir)/*.cpp))
+CPPFILES  := $(CPPFILES) $(shell if [ ! -z "$(common)" ]; then echo $(foreach c, $(common), $(COMMON)/$(c).cpp); else echo $(foreach dir, $(COMMON), $(filter-out $(foreach file, $(EXCLUDE), $(dir)/$(file)), $(wildcard $(dir)/*.cpp))); fi)
+# CPPFILES  := $(foreach dir, $(COMMON) $(SRC), $(filter-out $(foreach file, $(EXCLUDE), $(dir)/$(file)), $(wildcard $(dir)/*.cpp)))
 EXTCPP    := $(foreach dir, $(EXT), $(wildcard $(dir)/*.cpp))
 OBJ        = $(CFILES:.c=.c.o) $(EXTC:.c=.c.o) $(CPPFILES:.cpp=.cpp.o) $(EXTCPP:.cpp=.cpp.o)
 DEPENDS   := $(CFILES:.c=.d) $(EXTC:.c=.d) $(CPPFILES:.cpp=.cpp.d) $(EXTCPP:.cpp=.cpp.d)
