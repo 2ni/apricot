@@ -16,8 +16,6 @@
 #include <avr/interrupt.h>
 #include "uart.h"
 
-#include "pins.h"
-
 #define TX_BUFF_SIZE 64
 static uint8_t tx_buff[TX_BUFF_SIZE];
 static uint8_t tx_in; // pointer of filling buffer
