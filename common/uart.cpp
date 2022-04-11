@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <avr/pgmspace.h>
+#include <avr/interrupt.h>
 #include <stdint.h>
 #include <avr/io.h>
 #include <util/delay.h>
@@ -55,6 +56,7 @@ ISR(USART0_RXC_vect) {
  *
  */
 void uart_init(uint8_t enable_rx) {
+  sei();
   USART0.BAUD = (uint16_t)USART_BAUD_RATE(USART_BPS);
   USART0.CTRLB = USART_TXEN_bm;  // enable TX
   USART_PORT.DIRSET = USART_TX;
