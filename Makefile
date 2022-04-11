@@ -10,7 +10,7 @@
 # run "make FLAGS=" to not run in debug mode
 #
 # example:
-# make mcu=attiny1627 common="uart aes" port=3
+# make mcu=attiny1627 common="uart aes" port=3 clk=5000000
 #
 .PHONY: all clean tests
 
