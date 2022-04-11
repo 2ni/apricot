@@ -13,7 +13,6 @@ dummy
 *.asm
 pack/
 toolchain_*
-pyupdi
 src/
 bin/
 iotn3217.h
