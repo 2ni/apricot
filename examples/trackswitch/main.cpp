@@ -7,6 +7,14 @@
 #include "pins.h"
 #include "stepper.h"
 
+/*
+ * V2.1 uses a stepper motor
+ * V2.2 uses a "normal" motor with gear
+ * comment/uncomment accordingly
+ *
+ */
+// #define __USESTEPPER__
+
 // https://www.opendcc.de/elektronik/opendecoder/opendecoder_sw_schalt_e.html
 // make mcu=attiny1604 flash
 
@@ -14,7 +22,9 @@
 // LIMIT1 PB1
 // LIMIT2 PB0
 
+#ifdef __USESTEPPER__
 STEPPER stepper;
+#endif
 
 namespace DCC_STATE {
   typedef enum {
@@ -57,13 +67,17 @@ uint16_t get_cur_addr() {
 
 uint16_t last_xor = 0;
 
+#ifdef __USESTEPPER__
 pins_t INA1 = PA7;
 pins_t INA2 = PA6;
+#endif
 pins_t INB1 = PB2;
 pins_t INB2 = PB3;
 pins_t LIMIT1 = PB1;
 pins_t LIMIT2 = PB0;
 pins_t DCC = PA5;
+pins_t LED1 = PA4;
+pins_t LED2 = PA3;
 
 volatile int16_t direction = 0;
 volatile uint8_t limit_reached = 0;
@@ -103,15 +117,19 @@ ISR(PORTA_PORT_vect) {
 }
 
 /*
- * trigger for stepper limits
+ * trigger for stepper/motor limits
  */
 ISR(PORTB_PORT_vect) {
   uint8_t flags = PORTB.INTFLAGS;
   PORTB.INTFLAGS = flags; // clear flags
 
-  // stepper limits
-  if (flags & (PORT_INT1_bm | PORT_INT0_bm)) {
+  // limit reached
+  // if (flags & (PORT_INT1_bm | PORT_INT0_bm)) {
+  if (flags & PORT_INT0_bm) {
     limit_reached = 1;
+  }
+  if (flags & PORT_INT1_bm) {
+    limit_reached = 2;
   }
 }
 
@@ -133,27 +151,37 @@ void init_timer() {
 void move_turnout(uint8_t position) {
   ts_stepper = clock.current_tick;
   if (position == 0x01 && pins_get(&LIMIT2) != 0) {
-    pins_set(&pins_led, 1);
-    stepper.move(1000, speed);
+    pins_set(&LED2, 0);
+#ifdef __USESTEPPER__
+    stepper.move(1500, speed);
+#else
+    pins_set(&INB1, 1);
+    pins_set(&INB2, 0);
+#endif
   }
 
   if (position == 0x00 && pins_get(&LIMIT1) != 0) {
-    pins_set(&pins_led, 1);
-    stepper.move(-1000, speed);
+    pins_set(&LED1, 0);
+#ifdef __USESTEPPER__
+    stepper.move(-1500, speed);
+#else
+    pins_set(&INB1, 0);
+    pins_set(&INB2, 1);
+#endif
   }
 }
 
 void activate_service_prg() {
   reset_count = 0;
   in_service_prg = 1;
-  // pins_set(&pins_led, 1);
+  // pins_set(&LED1, 1);
   ts_last_prg_cmd = clock.current_tick;
   // DL("prg on");
 }
 
 void deactivate_service_prg() {
   in_service_prg = 0;
-  // pins_set(&pins_led, 0);
+  // pins_set(&LED1, 0);
   ts_last_prg_cmd = 0;
   // DL("prg off");
 }
@@ -169,8 +197,13 @@ void cv_bytewise_read(PRG::Type_Prg_Mode mode, uint8_t *cv, uint8_t value) {
   if (mode == PRG::SERVICE && *cv == value) {
     // start consuming >+60mA for 5-7ms if in mode SERVICE
     ts_ack_start = clock.current_tick;
+#ifdef __USESTEPPER__
     stepper.keep();
-    pins_set(&pins_led, 1);
+#else
+    pins_set(&INB1, 1);
+    pins_set(&INB2, 0);
+#endif
+    pins_set(&LED1, 1);
   }
 }
 
@@ -181,8 +214,13 @@ void cv_bytewise_write(PRG::Type_Prg_Mode mode, uint8_t *cv, uint8_t value) {
   // ack in service mode only
   if (mode == PRG::SERVICE) {
     ts_ack_start = clock.current_tick;
+#ifdef __USESTEPPER__
     stepper.keep();
-    pins_set(&pins_led, 1);
+#else
+    pins_set(&INB1, 1);
+    pins_set(&INB2, 0);
+#endif
+    pins_set(&LED1, 1);
   }
 }
 
@@ -191,8 +229,13 @@ void cv_bitwise(PRG::Type_Prg_Mode mode, uint8_t bit_write, uint8_t *cv, uint8_t
   if (mode == PRG::SERVICE && !bit_write && bit_value == ((*cv >> bit_addr) & 0x01)) {
     // start consuming >+60mA for 5-7ms if in mode SERVICE
     ts_ack_start = clock.current_tick;
+#ifdef __USESTEPPER__
     stepper.keep();
-    pins_set(&pins_led, 1);
+#else
+    pins_set(&INB1, 1);
+    pins_set(&INB2, 0);
+#endif
+    pins_set(&LED1, 1);
   }
 
   // TODO write only after 2nd packet in OPS mode
@@ -204,8 +247,13 @@ void cv_bitwise(PRG::Type_Prg_Mode mode, uint8_t bit_write, uint8_t *cv, uint8_t
     if (mode == PRG::SERVICE) {
       // start consuming >+60mA for 5-7ms if in mode SERVICE
       ts_ack_start = clock.current_tick;
+#ifdef __USESTEPPER__
       stepper.keep();
-      pins_set(&pins_led, 1);
+#else
+      pins_set(&INB1, 1);
+      pins_set(&INB2, 0);
+#endif
+      pins_set(&LED1, 1);
     }
   }
 }
@@ -309,12 +357,27 @@ void handle_cv(PRG::Type_Prg_Mode mode, uint8_t *packets, uint8_t *packets_count
     ts_stepper = 0; \
     stepper.stop(); \
     stepper.move(0, speed); \
-    pins_set(&pins_led, 0); \
+    if (limit_reached == 2) PORTA.OUTSET = PIN3_bm; \
+    else if (limit_reached == 1) PORTA.OUTSET = PIN4_bm; \
     limit_reached = 0; \
     if (break_when_reached) break; \
   } \
 }
 
+#define MOTOR_REACHED_POS(break_when_reached) { \
+  if (limit_reached || (ts_stepper && (clock.current_tick - ts_stepper) > 4096)) { \
+    ts_stepper = 0; \
+    PORTB.OUTSET = PIN2_bm; \
+    PORTB.OUTSET = PIN3_bm; \
+    __builtin_avr_delay_cycles(5); \
+    PORTB.OUTCLR = PIN2_bm; \
+    PORTB.OUTCLR = PIN3_bm; \
+    if (limit_reached == 2) PORTA.OUTSET = PIN3_bm; \
+    else if (limit_reached == 1) PORTA.OUTSET = PIN4_bm; \
+    limit_reached = 0; \
+    if (break_when_reached) break; \
+  } \
+}
 
 /*
  * + -> right move
@@ -334,6 +397,9 @@ int main(void) {
   pins_output(&DCC, 0); // set as input
   PORTA.PIN5CTRL |= PORT_ISC_BOTHEDGES_gc; // DCC
 
+  pins_output(&LED1, 1);
+  pins_output(&LED2, 1);
+
   // dbg for oscilloscope
   // pins_output(&PA3, 1);
   // pins_set(&PA3, 1);
@@ -348,31 +414,45 @@ int main(void) {
 
   init_timer();
 
-  // stepper motor
+  // limits
   pins_pullup(&LIMIT1, 1);
   pins_pullup(&LIMIT2, 1);
   PORTB.PIN1CTRL |= PORT_ISC_FALLING_gc; // LIMIT1
   PORTB.PIN0CTRL |= PORT_ISC_FALLING_gc; // LIMIT2
 
+#ifdef __USESTEPPER__
   stepper.init(&INA1, &INA2, &INB1, &INB2);
+#else
+  pins_output(&INB1, 1);
+  pins_output(&INB2, 1);
+#endif
 
   // set to left position if unknown at start
   if (pins_get(&LIMIT1) && pins_get(&LIMIT2)) {
-    ts_stepper = clock.current_tick;
     DL("move to home");
-    stepper.move(-1000, speed);
-    ts_stepper = clock.current_tick;
+    move_turnout(0);
     while (1) {
+#ifdef __USESTEPPER__
       STEPPER_REACHED_POS(1);
       stepper.loop();
+#else
+      MOTOR_REACHED_POS(1);
+#endif
     }
   }
+
+  if (pins_get(&LIMIT1) == 0) pins_set(&LED2, 1);
+  else if (pins_get(&LIMIT2) == 0) pins_set(&LED1, 1);
 
   DL("waiting for signal...");
   while (1) {
     // stop stepper on limit or max duration for stepper reached (1s/(8/32768))
+#ifdef __USESTEPPER__
     stepper.loop();
     STEPPER_REACHED_POS(0);
+#else
+    MOTOR_REACHED_POS(0);
+#endif
 
     // handle dcc
     // TODO?
@@ -566,8 +646,13 @@ int main(void) {
     if (ts_ack_start && (clock.current_tick - ts_ack_start) > 24) { // 0.006s/(8/32768)
       ts_ack_start = 0;
       // stop consuming
+#ifdef __USESTEPPER__
       stepper.stop();
-      pins_set(&pins_led, 0);
+#else
+      pins_set(&INB1, 0);
+      pins_set(&INB2, 0);
+#endif
+      pins_set(&LED1, 0);
     }
 
     // timeout prg mode
