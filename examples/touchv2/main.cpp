@@ -32,7 +32,7 @@
  *  5) transfer load to Csense : PA6=0 (output)
  *  6) increment count / check if PA5 high
  *
- *  if value lower -> finger is there (Ctouch gets bigger and needs less cycles to load Csense)
+ *  if count lower -> finger is there (Ctouch gets bigger and needs less cycles to load Csense)
  *
  *  based on https://www.avrfreaks.net/forum/charge-transfer-capacitance-measurement
  */
@@ -104,6 +104,7 @@ int main(void) {
   mcu_init();
 
   while (1) {
+    // DF("res: %u\n", get_data_charge_transfer());
     DF("res: %u\n", get_data_self());
     _delay_ms(1000);
   }
