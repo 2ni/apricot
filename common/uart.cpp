@@ -114,6 +114,24 @@ void uart_tuple(const char* key, uint16_t value, uint8_t base) {
   uart_send_string_p(PSTR("\r\n"));
 }
 
+void uart_tuple(const char *key, uint8_t value, uint8_t base) {
+  _uart_send_tuple_key(key);
+  char buf[9];
+  if (base==16) {
+    sprintf(buf, "0x%02x", value);
+  } else if (base==2) {
+    for (uint8_t i=0; i<8; i++) {
+      buf[i] = value & 0x80 ? '1' : '0';
+      value <<= 1;
+    }
+  } else {
+    itoa(value, buf, base);
+  }
+
+  uart_send_string(buf);
+  uart_send_string_p(PSTR("\r\n"));
+}
+
 /*
  * sends a tuple with type const char to the uart
  * ie "key: <char array>"

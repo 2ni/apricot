@@ -53,6 +53,7 @@
 void     uart_init(uint8_t enable_rx = 0);
 void     uart_tuple(const char* key, const char* value);
 void     uart_tuple(const char* key, uint16_t value, uint8_t base=10);
+void     uart_tuple(const char *key, uint8_t value, uint8_t base=10);
 void     uart_tuple(const char* key, char* value);
 void     uart_send_char(unsigned char c);
 uint8_t  uart_is_busy();
