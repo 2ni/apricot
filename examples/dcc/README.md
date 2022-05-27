@@ -20,6 +20,7 @@ E: control bit (xor)
 - examples: https://www.opendcc.de/elektronik/opendcc/opendcc_sw_lenz.html
 - nmra extended packet formats: https://www.nmra.org/sites/default/files/s-9.2.1_2012_07.pdf
 - extended accessory decoder 11bit: https://www.iascaled.com/blog/high-current-dcc-accessory-decoder/
+- adressierung zubehör dekoder: https://wiki.rocrail.net/doku.php?id=addressing:accessory-pg-de
 
 
 - https://www.nmra.org/index-nmra-standards-and-recommended-practices
