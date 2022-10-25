@@ -24,7 +24,7 @@
  * TCA0.SINGLE.CTRLB = TCA_SINGLE_CMP1EN_bm | TCA_SINGLE_WGMODE_FRQ_gc;
  *
  * PWM WITH DUTY CYCLE 38kHz 1/4 (TCA0)
- * TCA0.SINGLE.PER = 263; // frequency=10MHz/PER, use PERBUF to dynamically change w/o glitches
+ * TCA0.SINGLE.PER = 263; // frequency=10MHz/(PER+1), use PERBUF to dynamically change w/o glitches
  * TCA0.SINGLE.CMP1 = 66; // duty cycly (max PER), user CMP1BUF to dynamicall change w/o glitches
  * TCA0.SINGLE.CTRLA = TCA_SINGLE_CLKSEL_DIV1_gc | TCA_SINGLE_ENABLE_bm;
  * TCA0.SINGLE.CTRLB = TCA_SINGLE_CMP1EN_bm | TCA_SINGLE_WGMODE_SINGLESLOPE_gc;
