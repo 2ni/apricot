@@ -5,6 +5,7 @@
 
 /*
  * TCD (12bit timer) in two ramp mode
+ * TCD only works in idle sleep mode
  * WOA: PA4
  * WOB: PA5
  */
@@ -12,7 +13,7 @@
 int main(void) {
   mcu_init();
 
-  uint8_t deadtime = 2;   // ms: deadtime/20MHz
+  uint8_t deadtime = 0;   // ms: deadtime/20MHz
   uint8_t duty = 25;      // 0-100
   uint16_t counter = 255; // frq = 20MHz/counter
   TCD0.CTRLA = TCD_CNTPRES_DIV1_gc | TCD_SYNCPRES_DIV1_gc | TCD_CLKSEL_20MHZ_gc;
@@ -27,5 +28,5 @@ int main(void) {
   while (!(TCD0.STATUS & TCD_ENRDY_bm)); // wait for any synch going on
   TCD0.CTRLE = TCD_SYNC_bm;
   TCD0.CTRLA |= TCD_ENABLE_bm;
-  while(1);
+  while (1);
 }
