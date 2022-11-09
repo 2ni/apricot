@@ -5,7 +5,7 @@
  *   https://hum60hz.wordpress.com/2013/12/11/a-diy-crude-inductive-proximity-switch/
  *
  * inductive sensor on PA6 (AINP0, AC2)
- * set AINN0 to Vref (1.5v)
+ * set AINN0 to DAC2 or vref (use USE_DAC_REF for it)
  *     AINP0 -> PA6
  *
  * fromt tests wen can measure the following maximums: 200kHz, min 4mV diff from 1.5v
@@ -18,7 +18,8 @@
  *  +3.3v ---+
  *           |  +-C1-+
  *          R1  |    |
- *           |--+-L1-+-R3--> PA6
+ *           |  |    |
+ *  (+1.5v)  |--+-L1-+-R3--> PA6
  *           |  |
  *          R2 C2
  *           |  |
@@ -29,7 +30,7 @@
  *  limiting pin current to 20mA: R3 = (3.3-1.5)/.02 = 90
  *  excitation pulse: 1-5us
  *
- *  instead of R1/R2 use DAC0 or DAC1
+ *  instead of R1/R2 use DAC0 (-> DAC0 output is PA6...)
  *  instead of AC2.AINN=VREF use DAC2 to set Vref
  *
  *
@@ -41,6 +42,8 @@
 #include <avr/io.h>
 #include "uart.h"
 #include "mcu.h"
+
+#define USE_DAC_REF 1 // we use the output of DAC2 to compare our oscillation, so we can better fine tune it
 
 #define _wait() do { __asm__ __volatile__ ("nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n"); } while (0) // wait ~1us
 #define PIN_SIGNAL PIN6_bm
@@ -96,16 +99,24 @@ ISR(TCA0_OVF_vect) {
 int main(void) {
   mcu_init(0, 0); // disable clock
 
+  // set DAC2 and AC2 reference voltage
+  // if we use DAC2 as neg input for AC2: VREF_DAC2REFSEL_2V5_gc, VREF_DAC2REFSEL_1V5_gc)
+  // see AC2.MUXCTRLA = AC_MUXNEG_VREF_gc or AC_MUXNEG_DAC_gc
+#ifdef USE_DAC_REF
+  VREF.CTRLD = VREF_DAC2REFSEL_2V5_gc;
+  DAC2.DATA = 153; // 255*1.5v/2.5v
+  DAC2.CTRLA = DAC_ENABLE_bm;
+  AC2.MUXCTRLA = AC_MUXPOS_PIN0_gc | AC_MUXNEG_DAC_gc;
+#else
+  VREF.CTRLD = VREF_DAC2REFSEL_1V5_gc;
+  AC2.MUXCTRLA = AC_MUXPOS_PIN0_gc | AC_MUXNEG_VREF_gc;
+#endif
+
   // set INTMODE in AC2.CTRLA, AC2.INTCTRL
-  // LPMODE off (no low power mode for now)
+  // LPMODE off (no low power mode for now) AC_LPMODE_EN_gc or AC_LPMODE_DIS_gc
   // hysteresis: AC_HYSMODE_OFF_gc or AC_HYSMODE_10mV_gc
   // AINP0 = PA6
-  VREF.CTRLD = VREF_DAC2REFSEL_1V5_gc; // set DAC2 to 1.5 (also for AC2)
-  AC2.CTRLA = AC_INTMODE_BOTHEDGE_gc | AC_LPMODE_DIS_gc | AC_HYSMODE_10mV_gc; // | AC_ENABLE_bm;
-  AC2.MUXCTRLA = AC_MUXPOS_PIN0_gc | AC_MUXNEG_VREF_gc;
-
-  // PORTA.PIN6CTRL |= PORT_ISC_INPUT_DISABLE_gc;
-
+  AC2.CTRLA = AC_INTMODE_BOTHEDGE_gc | AC_LPMODE_DIS_gc | AC_HYSMODE_10mV_gc | AC_LPMODE_DIS_gc;
   AC2.INTCTRL = AC_CMP_bm;
   AC2.CTRLA |= AC_ENABLE_bm; // enable interrupts
 
@@ -129,6 +140,7 @@ int main(void) {
         measure_in_progress = 0;
         DF("oscillations : %u\n", oscillations);
         // go to sleep, wake up by TCA0 interrupt
+        // TODO TCA0 is not running in sleep mode, so we'll need to the RTC clock
       }
     }
   }
