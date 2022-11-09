@@ -1,4 +1,9 @@
 /*
+ * inspired by
+ *   http://coole-basteleien.de/naeherungssensor
+ *   https://www.st.com/resource/en/application_note/an4636-demonstration-of-lc-sensor-for-gas-or-water-metering-based-on-stm32l073zeval-and-stm32l476rgnucleo-boards-stmicroelectronics.pdf
+ *   https://hum60hz.wordpress.com/2013/12/11/a-diy-crude-inductive-proximity-switch/
+ *
  * inductive sensor on PA6 (AINP0, AC2)
  * set AINN0 to Vref (1.5v)
  *     AINP0 -> PA6
