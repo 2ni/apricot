@@ -20,11 +20,17 @@ int main(void) {
   // set txd (pa1) as input or disconnect
   /*
   PORTA.DIRCLR = PIN1_bm;
-  set_sleep_mode(SLEEP_MODE_STANDBY);
+  set_sleep_mode(SLEEP_MODE_STANDBY); // or SLEEP_MODE_STANDBY, SLEEP_MODE_PWR_DOWN
   clock.stop(); // disable interrupts from rtc
   sleep_enable();
   sleep_cpu();
   DL("sleep");
+  */
+
+  /*
+  SLPCTRL.CTRLA = SLPCTRL_SMODE_PDOWN_gc | SLPCTRL_SEN_bm; // SLPCTRL_SMODE_PDOWN_gc, SLPCTRL_SMODE_STDBY_gc
+  sei();
+  sleep_cpu();
   */
 
   /*
