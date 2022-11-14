@@ -56,12 +56,11 @@ volatile uint8_t oscillations = 0;
 uint8_t oscillations_tmp = 0;
 volatile uint8_t c = 0;
 volatile uint8_t measure_in_progress = 0;
-volatile uint16_t ts_last_osc = 0;
 
 ISR(AC2_AC_vect) {
   AC2.STATUS = AC_CMP_bm; // clear int flag
   oscillations++;
-  ts_last_osc = clock.current_tick;
+  // PORTA.OUTTGL = PIN5_bm;
 }
 
 /*
@@ -77,19 +76,12 @@ ISR(TCA0_OVF_vect) {
     // start measure
     PORTA.OUTSET = PIN5_bm;
     SET_OUTPUT();
+    /*
     SET_LOW();
     _wait();
     _wait();
-    _wait();
-    _wait();
-    _wait();
-    _wait();
+    */
     SET_HIGH();
-    _wait();
-    _wait();
-    _wait();
-    _wait();
-    _wait();
     _wait();
     SET_INPUT();
     AC2.CTRLA |= AC_ENABLE_bm;
@@ -114,9 +106,9 @@ int main(void) {
 
   // set INTMODE in AC2.CTRLA, AC2.INTCTRL
   // LPMODE off (no low power mode for now) AC_LPMODE_EN_gc or AC_LPMODE_DIS_gc
-  // hysteresis: AC_HYSMODE_OFF_gc or AC_HYSMODE_10mV_gc
+  // hysteresis: AC_HYSMODE_OFF_gc or AC_HYSMODE_10mV_gc, AC_HYSMODE_25mV_gc, AC_HYSMODE_50mV_gc
   // AINP0 = PA6
-  AC2.CTRLA = AC_INTMODE_BOTHEDGE_gc | AC_LPMODE_DIS_gc | AC_HYSMODE_10mV_gc | AC_LPMODE_DIS_gc;
+  AC2.CTRLA = AC_INTMODE_BOTHEDGE_gc | AC_LPMODE_DIS_gc | AC_HYSMODE_50mV_gc | AC_LPMODE_DIS_gc;
   AC2.INTCTRL = AC_CMP_bm;
   AC2.CTRLA |= AC_ENABLE_bm; // enable interrupts
 
