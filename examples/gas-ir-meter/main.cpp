@@ -1,5 +1,22 @@
 /*
  *
+ * Optical sensor to read out a gas meter
+ * we use a opto interrupto such as ITR8307
+ * a small mosfet activates the ir transmitter
+ * the value is read out on the ir receiver with the adc
+ * PA4: ir transmitter
+ * PA5/AIN5: ir receiver
+ *
+ * we use the PIT every 250ms to trigger a ADC read, which is set up with
+ * an initial delay of ~400us: 1/(10MHz/16)*256 = 409.6us
+ * (see ADC0.CTRLD = ADC_INITDLY_DLY256_gc and ADC0.CTRLC = ADC_PRESC_DIV16_gc)
+ * as the ir receiver needs ~200-400us to settle to the correct value
+ *
+ * the interrupt ADC0_RESRDY_vect is called when a measurement is done
+ * the data is stored in a buffer, which is processed during the main routine.
+ * thus we shouldn't miss an active measurement in case the mcu is occupied with
+ * eg sending data or alike
+ *
  *  +3.3v ---+--+
  *           |  |
  *          R3  R2
@@ -10,7 +27,7 @@
  *           |  |
  *  GND -----+--+
  *
- *  R1,R3=100, R2=22k, Rgate=100
+ *  R1,R3=100, R2=22k, (Rgate=100)
  *  PA5=AIN5 (ADC0)
  *
  * default measurement: ~240
@@ -22,6 +39,9 @@
  * when the IR is activate it needs ~200-400us to settle on the correct value
  * this is why we use the initialization delay of the adc to avoid _delay's in the ISR
  * (ISR's don't like _delay's)
+ *
+ * TODO we could set the delay to ~50us and do adc measurements until the difference
+ *      to the previous measurement is eg < 3
  *
  */
 #include <avr/interrupt.h>
