@@ -310,12 +310,17 @@ void RFM69::send_frame(uint32_t to, const void* buffer, uint8_t size, uint8_t re
   // no need to wait for transmit mode to be ready since its handled by the radio
   this->set_mode(TX);
   // TODO sometimes PACKETSENT flags are not set and blocks
+  /*
   uint32_t start_tick = clock.current_tick;
   uint32_t current_tick = start_tick;
-  uint32_t limit = 400; // timeout: ms*32768/8000
+  uint32_t limit = 400; // timeout: ms = ticks/32768*(PER+1)*1000
   while (((current_tick - start_tick) < limit) && ((this->read_reg(REG_IRQFLAGS2) & RF_IRQFLAGS2_PACKETSENT) == 0x00)) {
     current_tick = clock.current_tick;
   }
+  */
+  // timeout ~4ms
+  uint8_t current = 0;
+  while (((current++)<160) && ((this->read_reg(REG_IRQFLAGS2) & RF_IRQFLAGS2_PACKETSENT) == 0x00));
   this->set_mode(STANDBY);
   // DF("sent (%lu) | ", current_tick-start_tick);
 }
@@ -342,7 +347,12 @@ uint8_t RFM69::send_retry(uint32_t to, const void* buffer, uint8_t buffer_len, R
 
     this->set_mode(STANDBY);
     DF(WARN("retry %u (%idBm)") " | ", i, this->read_rssi());
-    clock.sleep_for(410); // timeout until retry ms*32768/8000
+    uint32_t current = 0;
+    // timeout ~80ms
+    while ((current++)<98304) {
+      __asm__ __volatile__ ("nop\n");
+    }
+    // clock.sleep_for(410); // timeout until retry ms = ticks/32768*(PER+1)*1000 = 410/32768*8000 = 100ms
   }
 
   return 0;
@@ -356,20 +366,28 @@ uint8_t RFM69::listen(RFM69::Packet *response, uint8_t timeout_enabled) {
 
   this->set_mode(RX);
   this->isr = 0;
+  /*
   uint32_t start_tick = clock.current_tick;
   uint32_t current_tick = start_tick;
-  uint32_t limit = 300; // timeout: ms*32768/8000
+  uint32_t limit = 300; // timeout: ms = ticks/32768*(PER+1)*1000 = 300/32768*800 = 73ms
+  */
+  uint16_t current = 0;
   if (timeout_enabled) {
+    // timeout ~63ms
+    while (((current++)<40960) && !this->isr);
+    /*
     while (((current_tick - start_tick) < limit) && !this->isr) {
       current_tick = clock.current_tick;
     }
+    */
   } else {
     while (!this->isr);
   }
   // DF("%lu ticks | ", current_tick-start_tick);
 
   if (!(this->read_reg(REG_IRQFLAGS2) & RF_IRQFLAGS2_PAYLOADREADY)) {
-    DF(NOK("no data (%lu)") " | ", current_tick-start_tick);
+    // DF(NOK("no data (%lu)") " | ", current_tick-start_tick);
+    DF(NOK("no data (%u)") " | ", current);
     return 0;
   }
 
