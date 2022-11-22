@@ -60,7 +60,6 @@ void RFM69WRAPPER::send(WPacket *packets, uint8_t packets_len, WPacket *response
     this->rssi_limit_reached = 0;
     this->rssi_request = 0;
   }
-  uart_arr("raw send", stream, stream_len, 0);
 
   // copy packets to send to stream
   for (ii=0; ii<packets_len; ii++) {
@@ -69,6 +68,8 @@ void RFM69WRAPPER::send(WPacket *packets, uint8_t packets_len, WPacket *response
       stream[stream_len++] = packets[ii].payload[iii];
     }
   }
+
+  uart_arr("raw send", stream, stream_len, 0);
 
   *responses_len = 0;
   DL("");
