@@ -12,8 +12,10 @@
  * V2.2 uses a "normal" motor with gear
  * comment/uncomment accordingly
  *
+ * without limits only motor is supported
  */
 // #define __USESTEPPER__
+// #define __USELIMITS__
 
 // https://www.opendcc.de/elektronik/opendecoder/opendecoder_sw_schalt_e.html
 // make mcu=attiny1604 flash
@@ -21,6 +23,8 @@
 // DCC PA5
 // LIMIT1 PB1
 // LIMIT2 PB0
+// LEDR PA3 (position = 0)
+// LEDG PA4 (position = 1)
 
 #ifdef __USESTEPPER__
 STEPPER stepper;
@@ -73,11 +77,17 @@ pins_t INA2 = PA6;
 #endif
 pins_t INB1 = PB2;
 pins_t INB2 = PB3;
+#ifdef __USELIMITS__
 pins_t LIMIT1 = PB1;
 pins_t LIMIT2 = PB0;
+#else
+uint8_t current_position = 0;
+uint8_t EEMEM ee_current_position;
+#endif
+
 pins_t DCC = PA5;
-pins_t LED1 = PA4;
-pins_t LED2 = PA3;
+pins_t LEDG = PA4;
+pins_t LEDR = PA3;
 
 volatile int16_t direction = 0;
 volatile uint8_t limit_reached = 0;
@@ -119,6 +129,7 @@ ISR(PORTA_PORT_vect) {
 /*
  * trigger for stepper/motor limits
  */
+#ifdef __USELIMITS__
 ISR(PORTB_PORT_vect) {
   uint8_t flags = PORTB.INTFLAGS;
   PORTB.INTFLAGS = flags; // clear flags
@@ -132,6 +143,7 @@ ISR(PORTB_PORT_vect) {
     limit_reached = 2;
   }
 }
+#endif
 
 ISR(TCA0_OVF_vect) {
   TCA0.SINGLE.INTFLAGS = TCA_SINGLE_OVF_bm;
@@ -149,39 +161,49 @@ void init_timer() {
 }
 
 void move_turnout(uint8_t position) {
+  #ifdef __USELIMITS__
   ts_stepper = clock.current_tick;
   if (position == 0x01 && pins_get(&LIMIT2) != 0) {
-    pins_set(&LED2, 0);
-#ifdef __USESTEPPER__
+    pins_set(&LEDR, 0);
+    #ifdef __USESTEPPER__
     stepper.move(1500, speed);
-#else
+    #else
     pins_set(&INB1, 1);
     pins_set(&INB2, 0);
-#endif
+    #endif
   }
 
   if (position == 0x00 && pins_get(&LIMIT1) != 0) {
-    pins_set(&LED1, 0);
-#ifdef __USESTEPPER__
+    pins_set(&LEDG, 0);
+    #ifdef __USESTEPPER__
     stepper.move(-1500, speed);
-#else
+    #else
     pins_set(&INB1, 0);
     pins_set(&INB2, 1);
-#endif
+    #endif
   }
+  #else
+  if (current_position != position) {
+    ts_stepper = clock.current_tick;
+    pins_set(&LEDR, 1);
+    pins_set(&LEDG, 1);
+    current_position = position;
+    eeprom_update_byte(&ee_current_position, current_position);
+  }
+  #endif
 }
 
 void activate_service_prg() {
   reset_count = 0;
   in_service_prg = 1;
-  // pins_set(&LED1, 1);
+  // pins_set(&LEDG, 1);
   ts_last_prg_cmd = clock.current_tick;
   // DL("prg on");
 }
 
 void deactivate_service_prg() {
   in_service_prg = 0;
-  // pins_set(&LED1, 0);
+  // pins_set(&LEDG, 0);
   ts_last_prg_cmd = 0;
   // DL("prg off");
 }
@@ -203,7 +225,7 @@ void cv_bytewise_read(PRG::Type_Prg_Mode mode, uint8_t *cv, uint8_t value) {
     pins_set(&INB1, 1);
     pins_set(&INB2, 0);
 #endif
-    pins_set(&LED1, 1);
+    pins_set(&LEDG, 1);
   }
 }
 
@@ -220,7 +242,7 @@ void cv_bytewise_write(PRG::Type_Prg_Mode mode, uint8_t *cv, uint8_t value) {
     pins_set(&INB1, 1);
     pins_set(&INB2, 0);
 #endif
-    pins_set(&LED1, 1);
+    pins_set(&LEDG, 1);
   }
 }
 
@@ -235,7 +257,7 @@ void cv_bitwise(PRG::Type_Prg_Mode mode, uint8_t bit_write, uint8_t *cv, uint8_t
     pins_set(&INB1, 1);
     pins_set(&INB2, 0);
 #endif
-    pins_set(&LED1, 1);
+    pins_set(&LEDG, 1);
   }
 
   // TODO write only after 2nd packet in OPS mode
@@ -253,7 +275,7 @@ void cv_bitwise(PRG::Type_Prg_Mode mode, uint8_t bit_write, uint8_t *cv, uint8_t
       pins_set(&INB1, 1);
       pins_set(&INB2, 0);
 #endif
-      pins_set(&LED1, 1);
+      pins_set(&LEDG, 1);
     }
   }
 }
@@ -379,6 +401,18 @@ void handle_cv(PRG::Type_Prg_Mode mode, uint8_t *packets, uint8_t *packets_count
   } \
 }
 
+#define MOTOR_REACHED_POS_NO_LIMITS() { \
+  if (ts_stepper && (clock.current_tick - ts_stepper) > 4096) { \
+    ts_stepper = 0; \
+    PORTB.OUTSET = PIN2_bm; \
+    PORTB.OUTSET = PIN3_bm; \
+    __builtin_avr_delay_cycles(5); \
+    PORTB.OUTCLR = PIN2_bm; \
+    PORTB.OUTCLR = PIN3_bm; \
+    if (current_position == 0) pins_set(&LEDG, 0); \
+    else pins_set(&LEDR, 0); \
+  } \
+}
 /*
  * + -> right move
  * - -> left move
@@ -389,16 +423,33 @@ int main(void) {
   eeprom_read_block(&cfg, &ee_cfg, sizeof(CFG::Type_CVs));
   if ((cfg.CV120 & cfg.CV121 & cfg.CV29) == 0xff) cfg = cfg_default;
 
+  #ifndef __USELIMITS__
+  current_position = eeprom_read_byte(&ee_current_position);
+  if (current_position == 0xff) current_position = 0;
+  #endif
+
   DF("CV120: 0x%02x\n", cfg.CV120);
   DF("CV121: 0x%02x\n", cfg.CV121);
   DF("CV29: 0x%02x\n", cfg.CV29);
   DF("current address: %u (0x%02x)\n", get_cur_addr(), get_cur_addr());
 
+  #ifdef __USELIMITS__
+  DL("limits active");
+  #else
+  DF("current_position: %u\n", current_position)
+  #endif
+
+  #ifdef __USESTEPPER__
+  DL("stepper in operation");
+  #else
+  DL("motor in operation");
+  #endif
+
   pins_output(&DCC, 0); // set as input
   PORTA.PIN5CTRL |= PORT_ISC_BOTHEDGES_gc; // DCC
 
-  pins_output(&LED1, 1);
-  pins_output(&LED2, 1);
+  pins_output(&LEDR, 1);
+  pins_output(&LEDG, 1);
 
   // dbg for oscilloscope
   // pins_output(&PA3, 1);
@@ -415,44 +466,55 @@ int main(void) {
   init_timer();
 
   // limits
+  #ifdef __USELIMITS__
   pins_pullup(&LIMIT1, 1);
   pins_pullup(&LIMIT2, 1);
   PORTB.PIN1CTRL |= PORT_ISC_FALLING_gc; // LIMIT1
   PORTB.PIN0CTRL |= PORT_ISC_FALLING_gc; // LIMIT2
+  #endif
 
-#ifdef __USESTEPPER__
+  #ifdef __USESTEPPER__
   stepper.init(&INA1, &INA2, &INB1, &INB2);
-#else
+  #else
   pins_output(&INB1, 1);
   pins_output(&INB2, 1);
-#endif
+  #endif
 
   // set to left position if unknown at start
+  #ifdef __USELIMITS__
   if (pins_get(&LIMIT1) && pins_get(&LIMIT2)) {
     DL("move to home");
     move_turnout(0);
     while (1) {
-#ifdef __USESTEPPER__
+      #ifdef __USESTEPPER__
       STEPPER_REACHED_POS(1);
       stepper.loop();
-#else
+      #else
       MOTOR_REACHED_POS(1);
-#endif
+      #endif
     }
   }
 
-  if (pins_get(&LIMIT1) == 0) pins_set(&LED2, 1);
-  else if (pins_get(&LIMIT2) == 0) pins_set(&LED1, 1);
+  if (pins_get(&LIMIT1) == 0) pins_set(&LEDR, 1);
+  else if (pins_get(&LIMIT2) == 0) pins_set(&LEDG, 1);
+  #else
+  if (current_position == 0) pins_set(&LEDR, 1);
+  else pins_set(&LEDG, 1);
+  #endif
 
   DL("waiting for signal...");
   while (1) {
     // stop stepper on limit or max duration for stepper reached (1s/(8/32768))
-#ifdef __USESTEPPER__
+    #ifdef __USESTEPPER__
     stepper.loop();
     STEPPER_REACHED_POS(0);
-#else
-    MOTOR_REACHED_POS(0);
-#endif
+    #else
+      #ifdef __USELIMITS__
+      MOTOR_REACHED_POS(0);
+      #else
+      MOTOR_REACHED_POS_NO_LIMITS();
+      #endif
+    #endif
 
     // handle dcc
     // TODO?
@@ -652,7 +714,7 @@ int main(void) {
       pins_set(&INB1, 0);
       pins_set(&INB2, 0);
 #endif
-      pins_set(&LED1, 0);
+      pins_set(&LEDG, 0);
     }
 
     // timeout prg mode

@@ -151,18 +151,18 @@ ISR(TCA0_OVF_vect) {
 
   // no data to send and idle packet not done or not in action (idle_packets_p == 0 || idle_packets_p == -1)
   if (idle_packets_p <= 0 && !fill_with_idle && (buff_pos_out == buff_pos_in || (pause_signal_at != 65535 && buff_pos_out == pause_signal_at))) {
-    PORTB.OUT |= PIN6_bm | PIN7_bm; // PB6=PB7=1
+    PORTC.OUT |= PIN4_bm | PIN5_bm; // PB6=PB7=1
     edgecount = 0;
     return;
   }
 
   // let's toggle as fast as possible in isr
   if (edgecount == 0 || current_bit == 1 || (current_bit == 0 && (edgecount == 2 || edgecount == 4))) {
-    uint8_t portvalues = PORTB.IN;
+    uint8_t portvalues = PORTC.IN;
     // clear bit 7, copy pin 6 to 7, then toggle pin 6
-    portvalues = (portvalues & ~PIN7_bm) | ((portvalues & PIN6_bm)>>PIN6_bp<<PIN7_bp);
-    portvalues ^= PIN6_bm;
-    PORTB.OUT = portvalues;
+    portvalues = (portvalues & ~PIN5_bm) | ((portvalues & PIN4_bm)>>PIN4_bp<<PIN5_bp);
+    portvalues ^= PIN4_bm;
+    PORTC.OUT = portvalues;
   }
 
   // signal start
@@ -561,8 +561,8 @@ int main(void) {
   if (decoder_addr == 0xffff) decoder_addr = 0x05; // default 267=0x10b
   DF("address in use: %u\n", decoder_addr);
 
-  PORTB.DIR |= PIN6_bm | PIN7_bm;
-  PORTB.OUT |= PIN6_bm | PIN7_bm; // PB6=PB7=1
+  PORTC.DIR |= PIN4_bm | PIN5_bm;
+  PORTC.OUT |= PIN4_bm | PIN5_bm; // PB6=PB7=1
 
   // debug pin for oscilloscope
   pins_output(&PA7, 1);
