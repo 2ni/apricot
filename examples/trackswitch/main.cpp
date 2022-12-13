@@ -12,7 +12,7 @@
  * V2.2 uses a "normal" motor with gear
  * comment/uncomment accordingly
  *
- * without limits only motor is supported
+ * without limit sensors (__USELIMITS__) only motor is supported
  */
 // #define __USESTEPPER__
 // #define __USELIMITS__
