@@ -453,6 +453,7 @@ void basic_accessory_prg_bit(uint16_t addr, PRG::Type_Prg_Mode mode, uint16_t cv
 /*
  * extended accessory decoder 11bit address
  * {preamble} 0 10AAAAAA 0 0AAA0AA1 0 000XXXXX 0 EEEEEEEE 1
+ *              10A7A6A5A4A3A2 0 0a10a9a80A1A01 0
  */
 void extended_accessory(uint16_t addr, uint8_t output) {
   uint8_t packets[3];
