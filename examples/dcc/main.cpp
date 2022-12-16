@@ -417,7 +417,8 @@ void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_C
 
   // send reset packets 1st (only in service mode before 1st packet)
   if (mode == PRG::SERVICE && !skip_resets) {
-    for (uint8_t c=0; c<25; c++) {
+    // changed: we only send 1 reset packet instead of 25
+    for (uint8_t c=0; c<1; c++) {
       send_packet(packets, 2, mode);
     }
   }
@@ -645,8 +646,8 @@ int main(void) {
           DF("  %u : 25 reset packets\n", CMD_STATE::RESET);
           DF("  saddr: " OK("%u/0x%03x") " address cmds are sent to\n", decoder_addr, decoder_addr);
           DL("  caddr: change device addr");
-          DL("  cv  : read/write cv");
-          DL("  cvb : read/write cv bit");
+          DL("  cv  : verify/write cv");
+          DL("  cvb : verify/write cv bit");
           DL("  help: show this help");
           cmd_state = CMD_STATE::NONE;
         }
