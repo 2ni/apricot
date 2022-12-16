@@ -11,26 +11,43 @@
  * define prototypes to avoid "not declared in scope"
  */
 void parse_accessory_opmode(DCC::PACKET packet);
-void process_extended(uint16_t addr, uint8_t data);
-void process_basic_output(uint16_t address, uint8_t power, uint8_t direction);
-void process_basic_decoder(uint16_t address, uint8_t port, uint8_t power, uint8_t direction);
+void process_extended(uint8_t data);
+void process_basic_output(uint8_t power, uint8_t direction);
+void process_basic_decoder(uint8_t port, uint8_t power, uint8_t direction);
+void parse_servicemode(DCC::PACKET packet);
 void parse_cv(DCC::MODE mode, uint8_t cmd, uint16_t cv_addr, uint8_t cv_data);
 uint8_t read_cv(uint16_t cv_addr);
-uint8_t write_cv(uint16_t cv_addr, uint8_t cv_data);
+uint8_t write_cv(uint16_t cv_addr, uint8_t cv_data, uint8_t do_not_load_config = 0);
 void ack_cv(DCC::MODE mode);
 uint8_t get_memory_index(uint16_t cv_addr);
 void factory_default();
 void load_config();
+void toggle_track(uint8_t direction);
+void toggle_learning_mode(uint8_t force_value = 0);
+void position_reached();
 
 
 /*
  * make mcu=attiny1604 flash
- * DCC PA5
- * LEDR PA3 (position = 0)
- * LEDG PA4 (position = 1)
+ * PA5: DCC
+ * PA3: LEDR (position = 0, left/diverting/stop)
+ * PA4: LEDG (position = 1, right/straight/run))
+ * PB2/PB3: MOTOR
+ * PA7: TOGGLE LEARN MODE
+ * PB0: sensor limit pos 0 (pullup, active 0)
+ * PB1: sensor limit pos 1 (pullup, active 0)
  *
  * see https://pastebin.com/tEREeBg9 for an example of dcc with ATtiny412-SSN
  */
+
+// #define __LIMITSENSORS_ENABLED__
+
+#define PORT_LED PORTA
+#define LED_RED PIN3_bm
+#define LED_GREEN PIN4_bm
+#define PORT_MOTOR PORTB
+#define MOTORIN1 PIN2_bm
+#define MOTORIN2 PIN3_bm
 
 static const uint8_t INVALID_BIT = -1;
 
@@ -40,9 +57,14 @@ uint8_t xor_value = 0;
 uint8_t bit_count = 0;
 uint8_t byte = 0;
 QUEUE queue;
+uint8_t reset_packet_count = 0;
 
 uint8_t EEMEM ee_cfg[DCC::CV_SIZE];
 DCC::CFG cfg;
+
+uint32_t ts = 0;
+volatile uint32_t ts_debounce = 0;
+volatile uint8_t is_learning = 0;
 
 void reset() {
   state = DCC::STATE_PREAMBLE;
@@ -51,6 +73,25 @@ void reset() {
   byte = 0;
   xor_value = 0;
   bit_count = 0;
+}
+
+void motor(DCC::MOTOR movement) {
+  switch (movement) {
+    case DCC::MOTOR_FWD:
+      DL("motor fwd")
+      PORT_MOTOR.OUTSET = MOTORIN1;
+      PORT_MOTOR.OUTCLR = MOTORIN2;
+      break;
+    case DCC::MOTOR_REW:
+      DL("motor rew")
+      PORT_MOTOR.OUTSET = MOTORIN2;
+      PORT_MOTOR.OUTCLR = MOTORIN1;
+      break;
+    case DCC::MOTOR_STOP:
+      DL("motor stop")
+      PORT_MOTOR.OUT &= ~(MOTORIN1 | MOTORIN2);
+      break;
+  }
 }
 
 void process_bit(uint8_t bit) {
@@ -91,8 +132,10 @@ void process_bit(uint8_t bit) {
     case DCC::STATE_END_BIT:
       if (bit) {
         if (xor_value == 0 && (3 <= packet.len) && (packet.len < 6)) {
-          // valid
-          queue.push(packet);
+          // valid packet, ignore idle packets
+          if (!(packet.data[0] == 255 && packet.data[1] == 0 && packet.len == 3)) {
+            queue.push(packet);
+          }
         }
         state = DCC::STATE_PREAMBLE;
         packet.preamble = 0;
@@ -104,43 +147,53 @@ void process_bit(uint8_t bit) {
 }
 
 void parse_packet(DCC::PACKET packet) {
-  uint8_t addr = packet.data[0];
+  // ops mode
+  if (packet.preamble < 20) {
+    uint8_t addr = packet.data[0];
 
-  if ((0 <= addr) && (addr <= 127)) {
-    DF("multifunction decoder 7bit, not implemented, pre: %u, ", packet.preamble);
-    uart_arr("packet", packet.data, packet.len);
-  } else if ((128 <= addr) && (addr <= 191)) {
-    DF("basic/extended accessory 9/11bit, pre: %u, ", packet.preamble);
-    uart_arr("packet", packet.data, packet.len);
-    parse_accessory_opmode(packet);
-  } else if ((192 <= addr) && (addr <= 231)) {
-    DF("multifunction devoder 14bit, not implemented, pre: %u, ", packet.preamble);
-    uart_arr("packet", packet.data, packet.len);
-  } else if ((232 <= addr) && (addr <= 254)) {
-    DF("future use, not implemented, pre: %u, ", packet.preamble);
-    uart_arr("packet", packet.data, packet.len);
-  } else if (addr == 255 && packet.data[1] == 0 && packet.len == 3) {
-    // idle packet
-  };
+    if (0 == addr) {
+      DF("rst p: %u\n", reset_packet_count++);
+    } else if ((0 < addr) && (addr <= 127)) {
+      DL("multfct dec 7bit n/a");
+      uart_arr("  p", packet.data, packet.len);
+    } else if ((128 <= addr) && (addr <= 191)) {
+      DL("basic/ext accessory 9/11bit");
+      uart_arr("  p", packet.data, packet.len);
+      parse_accessory_opmode(packet);
+    } else if ((192 <= addr) && (addr <= 231)) {
+      DL("multifct dec 14bit n/a");
+      uart_arr("  p", packet.data, packet.len);
+    } else if ((232 <= addr) && (addr <= 254)) {
+      DL("future n/a");
+      uart_arr("  p", packet.data, packet.len);
+    } /*else if (addr == 255 && packet.data[1] == 0 && packet.len == 3) {
+      // idle packet
+    };*/
+  } else {
+    // service mode
+    DL("service");
+    uart_arr("  p", packet.data, packet.len);
+    parse_servicemode(packet);
+  }
 }
 
 /*
- *  basic (decoder addr)  9bit: {preamble} 0 10AAAAAA 0 1aaaCDDR 0 EEEEEEEE 1
- *  basic (output addr)  11bit: {preamble} 0 10AAAAAA 0 1aaaCAAR 0 EEEEEEEE 1
- *  extended 11bit:             {preamble} 0 10AAAAAA 0 0aaa0AA1 0 DDDDDDDD 0 EEEEEEEE 1
+ * basic (decoder addr)  9bit: {preamble} 0 10AAAAAA 0 1aaaCDDR 0 EEEEEEEE 1
+ * basic (output addr)  11bit: {preamble} 0 10AAAAAA 0 1aaaCAAR 0 EEEEEEEE 1
+ * extended 11bit:             {preamble} 0 10AAAAAA 0 0aaa0AA1 0 DDDDDDDD 0 EEEEEEEE 1
  *
- *  A: address bit
- *  a: address bit complement
- *  C: power (0=inactive, 1=active)
- *  D: port (0-3)
- *  R: direction (0:left/diverting/stop, 1:right/straight/drive)
+ * A: address bit
+ * a: address bit complement
+ * C: power (0=inactive, 1=active)
+ * D: port (0-3)
+ * R: direction (0:left/diverting/stop, 1:right/straight/run)
  *
  * http://normen.railcommunity.de/RCN-213.pdf
  * https://dccwiki.com/Accessory_Decoder_Addressing
- * Decoder 1, Port 1, 2, 3, 4
- * Decoder 2, Port 5, 6, 7, 8
+ * decoder 1, port 1, 2, 3, 4
+ * decoder 2, port 5, 6, 7, 8
  * ...
- * Addr 5: (2-1)*4 + 0 + 1
+ * addr 5: (2-1)*4 + 0 + 1
  * -> address (decoder port address: (decoder-1)*4 + port[0-3] + 1
  */
 void parse_accessory_opmode(DCC::PACKET packet) {
@@ -150,22 +203,33 @@ void parse_accessory_opmode(DCC::PACKET packet) {
   uint8_t direction = p1 & 0x01; // "R" 0=left/diverting/stop, 1=right/straight/drive
   uint16_t addr_decoder = (packet.data[0] & 0x3f) | ((uint16_t)((~p1 & 0x70))<<2); // 9bit, CV29[6]=0
   uint16_t addr_output = ((((addr_decoder - 1) << 2) | port) + 1); // 11bit, CV29[6]=1
+  uint16_t addr = (cfg.cv29 & 0x40) ? addr_output : addr_decoder;
+
   DF("   9bit: %04u, power: %u, port: %u, dir: %u\n", addr_decoder, power, port, direction);
   DF("  11bit: %04u, power: %u, port: -, dir: %u\n", addr_output, power, direction);
+  DF("   addr: %04u\n", addr);
+
+  // write new address from command
+  if (is_learning) {
+    DF("new addr: 0x%04x\n", addr);
+    write_cv(1, addr & 0xff, 1); // load config only after fully writing address
+    write_cv(9, (addr >> 8) & 0xff);
+    toggle_learning_mode(0);
+  }
 
   // check address
-  if (((cfg.cv29 & 0x40) && addr_output != cfg.addr) || (!(cfg.cv29 & 0x40) && addr_decoder != cfg.addr)) return;
+  if (addr != cfg.addr) return;
 
   if (packet.len == 3 && (p1 & 0x80) == 0x80) {
     // basic
     if ((cfg.cv29 & 0x40)) {
-      process_basic_output(addr_output, power, direction);
+      process_basic_output(power, direction);
     } else {
-      process_basic_decoder(addr_decoder, port, power, direction);
+      process_basic_decoder(port, power, direction);
     }
   } else if (packet.len == 4 && (p1 & 0x89) == 0x01) {
     // extended
-    process_extended(addr_output, packet.data[2]);
+    process_extended(packet.data[2]);
   } else if (packet.len == 6 && ((p1 & 0x80) == 0x80 || (p1 & 0x89) == 0x89) && (packet.data[2] & 0xf0) == 0xe0) {
     // ops mode configuration
     uint8_t cmd = (packet.data[2] & 0x0c) >> 2;
@@ -174,25 +238,64 @@ void parse_accessory_opmode(DCC::PACKET packet) {
   }
 }
 
-void process_basic_output(uint16_t address, uint8_t power, uint8_t direction) {
+/*
+ * https://dccwiki.com/Service_Mode_Programming
+ *
+ * {longpreamble} 0 0111CCVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
+ */
+void parse_servicemode(DCC::PACKET packet) {
+  if ( packet.len == 4 && (packet.data[0] & 0xf0) == 0x70) {
+    uint8_t cmd = (packet.data[0] & 0x0c) >> 2;
+    uint16_t cv_addr = (((packet.data[0] & 0x03) << 8) | packet.data[1]) + 1;
+    parse_cv(DCC::SERVICE, cmd, cv_addr, packet.data[2]);
+  }
 }
 
-void process_basic_decoder(uint16_t address, uint8_t port, uint8_t power, uint8_t direction) {
+/*
+ * basic accessory
+ * output addressing (11bit)
+ *
+ * direction (0:left/diverting/stop, 1:right/straight/run)
+ */
+void process_basic_output(uint8_t power, uint8_t direction) {
+  toggle_track(direction);
 }
 
-void process_extended(uint16_t address, uint8_t data) {
+/*
+ * basic accessory
+ * decoder addressing (9bit)
+ */
+void process_basic_decoder(uint8_t port, uint8_t power, uint8_t direction) {
+  toggle_track(direction);
+}
+
+void toggle_track(uint8_t new_position) {
+  if (cfg.current_position != new_position) {
+    ts = clock.current_tick;
+    PORT_LED.OUT |= LED_RED | LED_GREEN;
+    motor(new_position == 1 ? DCC::MOTOR_FWD : DCC::MOTOR_REW);
+  }
+}
+
+/*
+ * extended accessory (11bit)
+ */
+void process_extended(uint8_t data) {
 }
 
 /*
  * ack only in service mode
- * directly set msb/lsb addr in service mode (in ops mode we would loose contact, as addr would temporary change)
+ *
+ * https://dccwiki.com/Decoder_Programming
+ * TODO "Two identical packets are required before the decoder will act. If one of the packets is corrupted nothing will happen"
+ * TODO block address changes: "You cannot change the decoder address in this mode"
  *
  *  ops mode basic:    {preamble} 0 10AAAAAA 0 1aaaCDDR 0 1110KKVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
  *  ops mode extended: {preamble} 0 10AAAAAA 0 1aaa0AA1 0 1110KKVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
- *  service mode:      {preamble}                       0 0111KKVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
- *
  *  ops mode (bit):    {preamble}                       0 110110VV 0 VVVVVVVV 0 111KDBBB 0 EEEEEEEE 1
- *  service mode (bit):{preamble}                       0 011110VV 0 VVVVVVVV 0 111KDBBB 0 EEEEEEEE 1
+ *
+ *  service mode:      {longpreamble}                   0 0111KKVV 0 VVVVVVVV 0 DDDDDDDD 0 EEEEEEEE 1
+ *  service mode (bit):{longpreamble}                   0 011110VV 0 VVVVVVVV 0 111KDBBB 0 EEEEEEEE 1
  *
  *  A: address bit
  *  a: address bit complement
@@ -211,7 +314,7 @@ void parse_cv(DCC::MODE mode, uint8_t cmd, uint16_t cv_addr, uint8_t cv_data) {
       }
       break;
     case 0x03: // write
-      if (write_cv(cv_addr, cv_data)) {
+      if (write_cv(cv_addr, cv_data) == cv_data) {
         ack_cv(mode);
       }
       break;
@@ -237,6 +340,9 @@ void parse_cv(DCC::MODE mode, uint8_t cmd, uint16_t cv_addr, uint8_t cv_data) {
   }
 }
 
+/*
+ * https://dccwiki.com/Configuration_Variable
+ */
 uint8_t read_cv(uint16_t cv_addr) {
   uint8_t index = get_memory_index(cv_addr);
   if (index == 0xff) return index;
@@ -244,21 +350,18 @@ uint8_t read_cv(uint16_t cv_addr) {
   return eeprom_read_byte(&ee_cfg[index]);
 }
 
-uint8_t write_cv(uint16_t cv_addr, uint8_t cv_data) {
-  uint8_t update_eeprom = 0;
-  uint8_t update_config = 0;
+uint8_t write_cv(uint16_t cv_addr, uint8_t cv_data, uint8_t do_not_load_config) {
+  uint8_t update_eeprom = 1;
+  uint8_t update_config = 1;
 
   switch (cv_addr) {
     case 8: // manufacturer id
       factory_default();
-      update_config = 1;
+      update_eeprom = 0;
       break;
-    case 1: // addr (lsb, msb)
-    case 9:
-    case 29: // config
-      update_eeprom = 1;
-      update_config = 1;
-    default: // eg version
+    case 7: // version
+      update_config = 0;
+      update_eeprom = 0;
       break;
   }
 
@@ -266,13 +369,26 @@ uint8_t write_cv(uint16_t cv_addr, uint8_t cv_data) {
     eeprom_update_byte(&ee_cfg[get_memory_index(cv_addr)], cv_data);
   }
 
-  if (update_config) {
+  if (!do_not_load_config && update_config) {
     load_config();
   }
   return read_cv(cv_addr);
 }
 
 void ack_cv(DCC::MODE mode) {
+  switch (mode) {
+    case DCC::SERVICE:
+      {
+      DL("ack on");
+      uint32_t ts_ack = clock.current_tick;
+      while (clock.current_tick < (ts_ack + 24)); // 0.006s/(8/32768)
+      DL("ack off");
+      break;
+      }
+    case DCC::OPS:
+      // no feedback on operation mode
+      break;
+  }
 }
 
 /*
@@ -296,7 +412,14 @@ uint8_t get_memory_index(uint16_t cv_addr) {
     case 29:
       index = DCC::CV29_CONFIG;
       break;
+    case  33:
+      index = DCC::CV33_POSITION;
+      break;
+    case 34:
+      index = DCC::CV34_DELAY;
+      break;
     default:
+      DF(NOK("CV not configured: %u") "\n", cv_addr);
       return 0xff;
       break;
   }
@@ -313,12 +436,31 @@ void factory_default() {
 void load_config() {
   cfg.addr = (uint16_t)(read_cv(9) << 8 | read_cv(1));
   cfg.cv29 = read_cv(29);
+  cfg.current_position = read_cv(33);
+  cfg.delay = read_cv(34) * 82; // 0.02/(8/32768)
 
   DL("loaded into config:");
   DF("CV29: 0x%02x\n", cfg.cv29);
-  DF("current address: %u (0x%04x)\n", cfg.addr, cfg.addr);
+  DF("addr: %u (0x%04x)\n", cfg.addr, cfg.addr);
+  DF("pos: %u\n", cfg.current_position);
+  DF("delay: %lums (%u ticks)\n", cfg.delay*8000UL/32768, cfg.delay); //xms =1000*8/32768
 }
 
+void toggle_learning_mode(uint8_t force_value) {
+  if (force_value) is_learning = force_value;
+  else is_learning = !is_learning;
+
+  if (is_learning) {
+    PORT_LED.OUT |= LED_RED | LED_GREEN;
+  } else {
+    PORT_LED.OUTCLR = cfg.current_position ? LED_RED : LED_GREEN;
+  }
+}
+
+/*
+ * isr for DCC signal
+ * detects duration of impulse
+ */
 ISR(TCB0_INT_vect) {
   uint16_t width = TCB0.CCMP; // 0.1us (500 = 50us)
 
@@ -329,15 +471,76 @@ ISR(TCB0_INT_vect) {
   else reset();
 }
 
+/*
+ * isr to detect if we want to set the decoder in learning mode
+ * set PA7 low will toggle it
+ */
+ISR(PORTA_PORT_vect) {
+  uint8_t flags = PORTA.INTFLAGS;
+  PORTA.INTFLAGS = flags; // clear flags
+
+  if (flags & PORT_INT7_bm) {
+    // debounce: block contact for some time
+    if ((clock.current_tick-ts_debounce) > 4096) { //  1s/(8/32768)
+      ts_debounce = clock.current_tick;
+      toggle_learning_mode();
+    }
+  }
+}
+
+#ifdef __LIMITSENSORS_ENABLED__
+ISR(PORTB_PORT_vect) {
+  uint8_t flags = PORTB.INTFLAGS;
+  PORTB.INTFLAGS = flags; // clear flags
+
+  if (flags & (PORT_INT0_bm | PORT_INT1_bm)) {
+    // flags & PORT_INT1_bm -> current_position = 1 else 0
+    current_position = flags & PORT_INT1_bm;
+    position_reached();
+  }
+}
+#endif
+
+void position_reached() {
+  ts = 0;
+  // no need to reload all the config here
+  write_cv(33, !cfg.current_position, 1);
+  cfg.current_position = !cfg.current_position;
+
+  PORT_LED.OUTCLR = cfg.current_position ? LED_RED : LED_GREEN;
+  motor(DCC::MOTOR_STOP);
+}
+
+/*
+ * *********************************************************************************
+ * main
+ * *********************************************************************************
+ */
 int main(void) {
   mcu_init();
 
-  // load CVs
-  if (read_cv(8) != 0x0d) {
+  // load default cv's if manufacturer id is not "diy"
+  if (read_cv(8) != DCC::CV08_MANUFACTURER_DIY) {
     factory_default();
   }
   load_config();
-  write_cv(7, 2);
+
+  PORT_LED.DIRSET |= LED_GREEN | LED_RED;
+
+  PORTA.DIRCLR = PIN7_bm;
+  PORTA.PIN7CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;
+
+  PORT_LED.OUTSET = cfg.current_position ? LED_GREEN : LED_RED;
+
+  #ifdef __LIMITSENSORS_ENABLED__
+    PORTB.PIN0CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;
+    PORTB.PIN1CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;
+
+    if (PORTB.IN & (PIN0_bm | PIN1_bm)) {
+      DL("move to home");
+      toggle_track(0);
+    }
+  #endif
 
   EVSYS.ASYNCUSER0 = EVSYS_ASYNCUSER0_ASYNCCH0_gc; // ASYNCUSER0 = TCB0, connect with channel 0
   EVSYS.ASYNCCH0 = EVSYS_ASYNCCH0_PORTA_PIN5_gc; // DCC PA5
@@ -350,9 +553,24 @@ int main(void) {
 
   DCC::PACKET p;
   while (1) {
-    queue.pull(p);
-    if (p.len) {
-      parse_packet(p);
+    // keep this here instead of toggle_track, so we have a backup to stop even if limit sensor active
+    if (ts && (clock.current_tick - ts) > cfg.delay) {
+      // toggling done
+      position_reached();
     }
+
+    // if nothing in progress, we can fetch the next command
+    // unless we have limit sensors: then we can interrupt directly
+    // TODO might not work, as we change current_position only when reached
+    #ifdef __LIMITSENSORS_ENABLED__
+    if (!ts) {
+    #endif
+      queue.pull(p);
+      if (p.len) {
+        parse_packet(p);
+      }
+    #ifdef __LIMITSENSORS_ENABLED__
+    }
+    #endif
   }
 }

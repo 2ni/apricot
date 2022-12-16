@@ -9,7 +9,7 @@ class QUEUE {
     QUEUE();
     uint8_t empty();
     uint8_t full();
-    void push(DCC::PACKET &packet);
+    uint8_t push(DCC::PACKET &packet);
     void pull(DCC::PACKET &packet);
   private:
     static const uint8_t QUEUE_SIZE = 8;

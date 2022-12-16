@@ -13,11 +13,12 @@ uint8_t QUEUE::full() {
   return head == ((tail+1) % QUEUE_SIZE);
 }
 
-void QUEUE::push(DCC::PACKET &packet) {
-  if (full()) return;
+uint8_t QUEUE::push(DCC::PACKET &packet) {
+  if (full()) return 0;
 
   packets[tail] = packet;
   tail = (tail+1) % QUEUE_SIZE;
+  return 1;
 }
 
 void QUEUE::pull(DCC::PACKET &packet) {
