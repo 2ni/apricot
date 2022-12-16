@@ -131,7 +131,7 @@ void process_bit(uint8_t bit) {
       break;
     case DCC::STATE_END_BIT:
       if (bit) {
-        if (xor_value == 0 && (3 <= packet.len) && (packet.len < 6)) {
+        if (xor_value == 0 && (3 <= packet.len) && (packet.len <= 6)) {
           // valid packet, ignore idle packets
           if (!(packet.data[0] == 255 && packet.data[1] == 0 && packet.len == 3)) {
             queue.push(packet);
