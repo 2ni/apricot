@@ -157,7 +157,7 @@ void parse_packet(DCC::PACKET packet) {
       DL("multfct dec 7bit n/a");
       uart_arr("  p", packet.data, packet.len);
     } else if ((128 <= addr) && (addr <= 191)) {
-      DL("basic/ext accessory 9/11bit");
+      DL("accessory 9/11bit");
       uart_arr("  p", packet.data, packet.len);
       parse_accessory_opmode(packet);
     } else if ((192 <= addr) && (addr <= 231)) {
@@ -195,6 +195,8 @@ void parse_packet(DCC::PACKET packet) {
  * ...
  * addr 5: (2-1)*4 + 0 + 1
  * -> address (decoder port address: (decoder-1)*4 + port[0-3] + 1
+ *  basic: 82 e0 62        10000010 11100000 01100010
+ *  extended: 81 63 00 e2  10000001 01100011 00000000 11100010
  */
 void parse_accessory_opmode(DCC::PACKET packet) {
   uint8_t p1 = packet.data[1];
@@ -203,14 +205,24 @@ void parse_accessory_opmode(DCC::PACKET packet) {
   uint8_t direction = p1 & 0x01; // "R" 0=left/diverting/stop, 1=right/straight/drive
   uint16_t addr_decoder = (packet.data[0] & 0x3f) | ((uint16_t)((~p1 & 0x70))<<2); // 9bit, CV29[6]=0
   uint16_t addr_output = ((((addr_decoder - 1) << 2) | port) + 1); // 11bit, CV29[6]=1
+
+  uint8_t is_basic = packet.len == 3 && (p1 & 0x80) == 0x80;
+  uint8_t is_extended = packet.len == 4 && (p1 & 0x89) == 0x01;
+
   uint16_t addr = (cfg.cv29 & 0x40) ? addr_output : addr_decoder;
 
-  DF("   9bit: %04u, power: %u, port: %u, dir: %u\n", addr_decoder, power, port, direction);
-  DF("  11bit: %04u, power: %u, port: -, dir: %u\n", addr_output, power, direction);
-  DF("   addr: %04u\n", addr);
+  if (is_basic) {
+    DL("  basic");
+    DF("   9bit: %04u, power: %u, port: %u, dir: %u\n", addr_decoder, power, port, direction);
+    DF("  11bit: %04u, power: %u, port: -, dir: %u\n", addr_output, power, direction);
+    DF("   addr (%s): %04u\n", (cfg.cv29 & 0x40) ? "output": "decoder", addr);
+  } else if (is_extended) {
+    DL("  extended");
+    DF("  11bit: %04u, data: %u\n", addr_output, packet.data[2]);
+  }
 
   // write new address from command
-  if (is_learning) {
+  if (is_learning && (is_basic || is_extended)) {
     DF("new addr: 0x%04x\n", addr);
     write_cv(1, addr & 0xff, 1); // load config only after fully writing address
     write_cv(9, (addr >> 8) & 0xff);
@@ -220,14 +232,13 @@ void parse_accessory_opmode(DCC::PACKET packet) {
   // check address
   if (addr != cfg.addr) return;
 
-  if (packet.len == 3 && (p1 & 0x80) == 0x80) {
-    // basic
+  if (is_basic) {
     if ((cfg.cv29 & 0x40)) {
       process_basic_output(power, direction);
     } else {
       process_basic_decoder(port, power, direction);
     }
-  } else if (packet.len == 4 && (p1 & 0x89) == 0x01) {
+  } else if (is_extended) {
     // extended
     process_extended(packet.data[2]);
   } else if (packet.len == 6 && ((p1 & 0x80) == 0x80 || (p1 & 0x89) == 0x89) && (packet.data[2] & 0xf0) == 0xe0) {
@@ -281,6 +292,7 @@ void toggle_track(uint8_t new_position) {
  * extended accessory (11bit)
  */
 void process_extended(uint8_t data) {
+  toggle_track(data ? 1 : 0);
 }
 
 /*
