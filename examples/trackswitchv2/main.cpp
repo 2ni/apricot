@@ -37,7 +37,6 @@ void position_reached();
  * PB0: sensor limit pos 0 (pullup, active 0)
  * PB1: sensor limit pos 1 (pullup, active 0)
  *
- * see https://pastebin.com/tEREeBg9 for an example of dcc with ATtiny412-SSN
  */
 
 // #define __LIMITSENSORS_ENABLED__
@@ -374,6 +373,11 @@ uint8_t write_cv(uint16_t cv_addr, uint8_t cv_data, uint8_t do_not_load_config) 
     case 7: // version
       update_config = 0;
       update_eeprom = 0;
+      break;
+    case 33: // position
+      cv_data &= 0x01;
+      PORT_LED.OUTSET = cv_data ? LED_GREEN : LED_RED;
+      PORT_LED.OUTCLR = cv_data ? LED_RED : LED_GREEN;
       break;
   }
 
