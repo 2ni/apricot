@@ -362,7 +362,7 @@ void send_packet(uint8_t *packets, uint8_t len, PRG::Type_Prg_Mode mode = PRG::O
  */
 void split_addr(uint16_t addr, uint8_t *module_addr, uint8_t *port, uint8_t is_roco) {
   *module_addr = (addr - 1) / 4 + (is_roco ? 0 : 1);
-  *port = (addr - 1) % 4 + 1;
+  *port = (addr - 1) % 4;
 }
 
 /*
@@ -374,6 +374,18 @@ void split_addr(uint16_t addr, uint8_t *module_addr, uint8_t *port, uint8_t is_r
  *            0 10000010 0 11110001 (0x82 0xf0)
  *
  * each module_addr (9bit) has 4 ports (1-4)
+ *
+ * basic (decoder addr)  9bit: {preamble} 0 10AAAAAA 0 1aaaCDDR 0 EEEEEEEE 1
+ * basic (output addr)  11bit: {preamble} 0 10AAAAAA 0 1aaaCAAR 0 EEEEEEEE 1
+ * extended 11bit:             {preamble} 0 10AAAAAA 0 0aaa0AA1 0 DDDDDDDD 0 EEEEEEEE 1
+ *                                          10A7A6A5A4A3A2 0 0a10a9a80A1A01 0
+ *
+ * A: address bit
+ * a: address bit complement
+ * C: power/activation (0=inactive, 1=active)
+ * D: port (0-3)
+ * R: direction/output (0:left/diverting/stop, 1:right/straight/run)
+ *
  */
 void basic_accessory(uint16_t addr, uint8_t activation, uint8_t output, uint8_t is_roco = 0) {
   uint8_t packets[2];
@@ -381,8 +393,10 @@ void basic_accessory(uint16_t addr, uint8_t activation, uint8_t output, uint8_t 
   uint8_t port;
   split_addr(addr, &module_addr, &port, is_roco);
 
+  // we use output addressing from the given address
+  // the decoder can interpret the incoming data as output or decoder addressing
   packets[0] = 0x80 | (module_addr & 0x3f);
-  packets[1] = 0x80 | ((~module_addr & 0x1c0)>>2) | (((port - 1) & 0x03)<<1) | (activation ? 0x01<<3 : 0) | (output ? 0x01 : 0);
+  packets[1] = 0x80 | ((~module_addr & 0x1c0)>>2) | ((port & 0x03)<<1) | (activation ? 0x01<<3 : 0) | (output ? 0x01 : 0);
   send_packet(packets, 2);
   // uart_arr("packets", packets, 2);
 }
@@ -427,7 +441,7 @@ void basic_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_C
   split_addr(addr, &module_addr, &port, is_roco);
   if (mode == PRG::OPS) {
     packets[0] = 0x80 | (module_addr & 0x3f);
-    packets[1] = 0x88 | ((~module_addr & 0x1c0)>>2) | (((port - 1) & 0x03)<<1);
+    packets[1] = 0x88 | ((~module_addr & 0x1c0)>>2) | ((port & 0x03)<<1);
     index += 2;
     num += 2;
     cmd_start = 0b1110<<4;
@@ -453,15 +467,12 @@ void basic_accessory_prg_bit(uint16_t addr, PRG::Type_Prg_Mode mode, uint16_t cv
 
 /*
  * extended accessory decoder 11bit address
- * {preamble} 0 10AAAAAA 0 0AAA0AA1 0 000XXXXX 0 EEEEEEEE 1
+ * uses output addressing as in basic accessory
+ * {preamble} 0 10AAAAAA 0 0aaa0AA1 0 000XXXXX 0 EEEEEEEE 1
  *              10A7A6A5A4A3A2 0 0a10a9a80A1A01 0
  */
 void extended_accessory(uint16_t addr, uint8_t output) {
-  uint8_t packets[3];
-  packets[0] = 0x80 | ((addr & 0xfc)>>2);
-  packets[1] = 0x01 | ((~addr & 0x700)>>4) | ((addr & 0x03)<<1);
-  packets[2] = output;
-  send_packet(packets, 3);
+  basic_accessory(addr, 0, output);
 }
 
 /*
@@ -479,36 +490,7 @@ void extended_accessory(uint16_t addr, uint8_t output) {
  * addr is ignored if PRG::SERVICE
  */
 void extended_accessory_prg(uint16_t addr, PRG::Type_Prg_Mode mode, PRG::Type_Prg_Cmd_Type cmd_type, uint8_t cv_addr, uint8_t cv_data, uint8_t skip_resets = 0) {
-  uint8_t packets[5] = {0};
-  uint8_t index = 0;
-  uint8_t num = 3;
-  uint8_t cmd_start = 0b0111<<4;
-
-  // send reset packets 1st (only in service mode before 1st packet)
-  if (mode == PRG::SERVICE && !skip_resets) {
-    for (uint8_t c=0; c<25; c++) {
-      send_packet(packets, 2, mode);
-    }
-  }
-
-  if (mode == PRG::OPS) {
-    packets[0] = 0x80 | ((addr & 0xfc)>>2);
-    packets[1] = 0x01 | ((~addr & 0x700)>>4) | ((addr & 0x03)<<1);
-    index += 2;
-    num += 2;
-    cmd_start = 0b1110<<4;
-  }
-
-  cv_addr -= 1; // 1-1024
-  packets[index] = cmd_start | (cmd_type<<2) | ((cv_addr & 0x300)>>8);
-  packets[index+1] = 0xff & cv_addr;
-  packets[index+2] = cv_data;
-  send_packet(packets, num, mode);
-
-  // write requires 2 similar packets while in ops mode (in real env)
-  if (mode == PRG::OPS && (cmd_type == PRG::WRITE || (cmd_type == PRG::BIT && cv_data & 0x10))) {
-    send_packet(packets, num, mode);
-  }
+  basic_accessory_prg(addr, mode, cmd_type, cv_addr, cv_data, skip_resets);
 }
 
 void extended_accessory_prg_bit(uint16_t addr, PRG::Type_Prg_Mode mode, uint16_t cv_addr, uint8_t write, uint8_t bit_addr, uint8_t bit_value) {
