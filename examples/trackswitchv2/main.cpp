@@ -23,7 +23,7 @@ uint8_t get_memory_index(uint16_t cv_addr);
 void factory_default();
 void load_config();
 void toggle_track(uint8_t direction);
-void toggle_learning_mode(uint8_t force_value = 0);
+void toggle_learning_mode(int8_t force_value = -1);
 void position_reached();
 
 
@@ -63,7 +63,6 @@ DCC::CFG cfg;
 
 uint32_t ts = 0;
 volatile uint32_t ts_debounce = 0;
-volatile uint8_t is_learning = 0;
 
 void reset() {
   state = DCC::STATE_PREAMBLE;
@@ -221,7 +220,7 @@ void parse_accessory_opmode(DCC::PACKET packet) {
   }
 
   // write new address from command
-  if (is_learning && (is_basic || is_extended)) {
+  if (cfg.learn && (is_basic || is_extended)) {
     DF("new addr: 0x%04x\n", addr);
     write_cv(1, addr & 0xff, 1); // load config only after fully writing address
     write_cv(9, (addr >> 8) & 0xff);
@@ -379,6 +378,10 @@ uint8_t write_cv(uint16_t cv_addr, uint8_t cv_data, uint8_t do_not_load_config) 
       PORT_LED.OUTSET = cv_data ? LED_GREEN : LED_RED;
       PORT_LED.OUTCLR = cv_data ? LED_RED : LED_GREEN;
       break;
+    case 35: // learn
+      update_eeprom = 0;
+      update_config = 0;
+      toggle_learning_mode(cv_data);
   }
 
   if (update_eeprom) {
@@ -434,6 +437,9 @@ uint8_t get_memory_index(uint16_t cv_addr) {
     case 34:
       index = DCC::CV34_DELAY;
       break;
+    case 35:
+      index = DCC::CV35_LEARN;
+      break;
     default:
       DF(NOK("CV not configured: %u") "\n", cv_addr);
       return 0xff;
@@ -462,14 +468,16 @@ void load_config() {
   DF("delay: %lums (%u ticks)\n", cfg.delay*8000UL/32768, cfg.delay); //xms =1000*8/32768
 }
 
-void toggle_learning_mode(uint8_t force_value) {
-  if (force_value) is_learning = force_value;
-  else is_learning = !is_learning;
+void toggle_learning_mode(int8_t force_value) {
+  if (force_value != -1) cfg.learn = force_value;
+  else cfg.learn = !cfg.learn;
 
-  if (is_learning) {
+  if (cfg.learn) {
     PORT_LED.OUT |= LED_RED | LED_GREEN;
+    DL("entering learn mode");
   } else {
     PORT_LED.OUTCLR = cfg.current_position ? LED_RED : LED_GREEN;
+    DL("leaving learn mode");
   }
 }
 
@@ -488,7 +496,7 @@ ISR(TCB0_INT_vect) {
 }
 
 /*
- * isr to detect if we want to set the decoder in learning mode
+ * isr to detect if we want to set the decoder in learning mode over pin
  * set PA7 low will toggle it
  */
 ISR(PORTA_PORT_vect) {
@@ -497,7 +505,7 @@ ISR(PORTA_PORT_vect) {
 
   if (flags & PORT_INT7_bm) {
     // debounce: block contact for some time
-    if ((clock.current_tick-ts_debounce) > 4096) { //  1s/(8/32768)
+    if ((clock.current_tick-ts_debounce) > 4096) { // 1s/(8/32768)
       ts_debounce = clock.current_tick;
       toggle_learning_mode();
     }
