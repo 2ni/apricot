@@ -39,6 +39,7 @@ namespace DCC {
     CV29_CONFIG,
     CV33_POSITION,
     CV34_DELAY,
+    CV35_LEARN,
   } CV_Index;
 
   typedef struct {
@@ -46,6 +47,7 @@ namespace DCC {
     uint8_t cv29;
     uint8_t current_position;
     uint16_t delay;
+    uint8_t learn;
   } CFG;
 
   typedef struct {
@@ -54,7 +56,7 @@ namespace DCC {
   } CV;
 
   // https://dccwiki.com/Configuration_Variable
-  const uint8_t CV_SIZE = 7;
+  const uint8_t CV_SIZE = 8;
   const CV cv_defaults[CV_SIZE] = {
     { CV01_ADDR_LSB     , DCC::DECODER_ADDR & 0xff },
     { CV09_ADDR_MSB     , (DCC::DECODER_ADDR >> 8) & 0xff },
@@ -63,6 +65,7 @@ namespace DCC {
     { CV29_CONFIG       , 0b11000000 }, // [7]: 1=accessory decoder, [6]: 0=decoder addr, 1=output addr
     { CV33_POSITION     , 0 },
     { CV34_DELAY        , 50 }, // 20ms steps
+    { CV35_LEARN        , 0 }, // to put decoder to learn mode, we don't save it to eeprom
   };
 }
 #endif

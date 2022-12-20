@@ -3,9 +3,9 @@
 #include <avr/eeprom.h>
 #include <avr/interrupt.h>
 #include "uart.h"
-#include "mcu.h"
 #include "dcc_structs.h"
 #include "queue.h"
+#include "clock.h"
 
 /*
  * define prototypes to avoid "not declared in scope"
@@ -28,7 +28,7 @@ void position_reached();
 
 
 /*
- * make mcu=attiny1604 flash
+ * make mcu=attiny1604 common="clock uart" [nodebug=1] flash
  * PA5: DCC
  * PA3: LEDR (position = 0, left/diverting/stop)
  * PA4: LEDG (position = 1, right/straight/run))
@@ -47,6 +47,8 @@ void position_reached();
 #define PORT_MOTOR PORTB
 #define MOTORIN1 PIN2_bm
 #define MOTORIN2 PIN3_bm
+
+CLOCK clock;
 
 static const uint8_t INVALID_BIT = -1;
 
@@ -538,10 +540,28 @@ void position_reached() {
 /*
  * *********************************************************************************
  * main
+ * to be independent of mcu.h and pins.h we define things ourselves
  * *********************************************************************************
  */
 int main(void) {
-  mcu_init();
+  _PROTECTED_WRITE(CLKCTRL.MCLKCTRLB, CLKCTRL_PDIV_2X_gc | CLKCTRL_PEN_bm); // 10MHz
+  PORTMUX.CTRLB = PORTMUX_USART0_ALTERNATE_gc;
+  SLPCTRL.CTRLA = (SLPCTRL_SMODE_STDBY_gc | SLPCTRL_SEN_bm); // slp ctrl sets mcu to standby
+  clock.init(); // rtc
+  uart_init();
+
+  PORT_LED.DIRSET |= LED_GREEN | LED_RED;
+
+  // flash
+  uint8_t num = 3;
+  for (uint8_t c=0; c<num; c++) {
+    PORT_LED.OUTSET = LED_GREEN;
+    _delay_ms(20);
+    PORT_LED.OUTCLR = LED_GREEN;
+    if (c != num-1) _delay_ms(100);
+  }
+
+  PORT_LED.OUTSET = cfg.current_position ? LED_GREEN : LED_RED;
 
   // load default cv's if manufacturer id is not "diy"
   if (read_cv(8) != DCC::CV08_MANUFACTURER_DIY) {
@@ -549,12 +569,9 @@ int main(void) {
   }
   load_config();
 
-  PORT_LED.DIRSET |= LED_GREEN | LED_RED;
-
+  // dcc
   PORTA.DIRCLR = PIN7_bm;
   PORTA.PIN7CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;
-
-  PORT_LED.OUTSET = cfg.current_position ? LED_GREEN : LED_RED;
 
   #ifdef __LIMITSENSORS_ENABLED__
     PORTB.PIN0CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;
