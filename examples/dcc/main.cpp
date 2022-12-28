@@ -470,9 +470,18 @@ void basic_accessory_prg_bit(uint16_t addr, PRG::Type_Prg_Mode mode, uint16_t cv
  * uses output addressing as in basic accessory
  * {preamble} 0 10AAAAAA 0 0aaa0AA1 0 000XXXXX 0 EEEEEEEE 1
  *              10A7A6A5A4A3A2 0 0a10a9a80A1A01 0
+ *
  */
 void extended_accessory(uint16_t addr, uint8_t output) {
-  basic_accessory(addr, 0, output);
+  uint8_t packets[3];
+  uint8_t module_addr;
+  uint8_t port;
+  split_addr(addr, &module_addr, &port, 0);
+
+  packets[0] = 0x80 | (module_addr & 0x3f);
+  packets[1] = 0x01 | ((~module_addr & 0x1c0)>>2) | ((port & 0x03)<<1);
+  packets[2] = output;
+  send_packet(packets, 3);
 }
 
 /*
