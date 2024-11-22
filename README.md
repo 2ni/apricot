@@ -53,7 +53,7 @@ make reset                // resets the mcu and starts the debugging usart
 git clone --recurse-submodules git@github.com:2ni/apricot.git
 ```
 
-TODO: use [pymcuprog](https://github.com/microchip-pic-avr-tools/pymcuprog) instead of pyupdi
+[x] TODO: use [pymcuprog](https://github.com/microchip-pic-avr-tools/pymcuprog) instead of pyupdi: see [boilerplate](https://github.com/2ni/attiny-boilerplate)
 
 You'll need the toolchain from microchip to compile the sources.
 
@@ -79,6 +79,13 @@ cd toolchain_microchip; mv avr8-gnu-toolchain-darwin_x86_64/* .; rm -rf avr8-gnu
 cd ..
 mkdir toolchain_microchip/pack
 unzip Atmel.ATtiny_DFP.1.8.332.atpack -d toolchain_microchip/pack/
+```
+
+For faster access to relevant registers:
+```
+ln -s toolchain_microchip/pack/include/avr/iotn1604.h .
+ln -s toolchain_microchip/pack/include/avr/iotn1627.h .
+ln -s toolchain_microchip/pack/include/avr/iotn3217.h .
 ```
 
 don't forget to include <avr/io.h> in your main code!
